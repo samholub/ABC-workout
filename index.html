@@ -135,6 +135,82 @@ onHR&&e("button",{onClick:onHR,style:{background:"#1a0a1a",border:"1px solid #44
 e("button",{onClick:function(){setRun(!run)},style:{background:"#292524",border:"1px solid #44403C",borderRadius:8,color:"#E7E5E4",padding:"6px 12px",fontSize:13,cursor:"pointer"}},run?"Pause":"Resume"),rem===0?e("button",{onClick:onDone,style:{background:"#10B981",border:"none",borderRadius:8,color:"#fff",padding:"6px 12px",fontSize:13,fontWeight:600,cursor:"pointer"}},"Next \u2192"):e("button",{onClick:function(){clearInterval(ref.current);onDone()},style:{background:"#44403C",border:"none",borderRadius:8,color:"#A8A29E",padding:"6px 12px",fontSize:13,cursor:"pointer"}},"Skip")))
 }
 
+// ===== SNR-WEIGHTED PPG HEARTBEAT DETECTION =====
+var PPG_CH=['red','blue','L','a','b'];
+var PPG_REF='a';
+var PPG_LO=0.7,PPG_HI=3.5,PPG_FW=0.3,PPG_SETTLE=2000,PPG_MIN_RED=100,PPG_MIN_BPM=42,PPG_MAX_BPM=210;
+
+function ppgMedian(arr){var s=arr.slice().sort(function(a,b){return a-b});var m=Math.floor(s.length/2);return s.length%2===0?(s[m-1]+s[m])/2:s[m]}
+function ppgStd(arr){var n=arr.length,sm=0;for(var i=0;i<n;i++)sm+=arr[i];var mn=sm/n,sq=0;for(var i=0;i<n;i++)sq+=(arr[i]-mn)*(arr[i]-mn);return Math.sqrt(sq/n)}
+function ppgTrapz(y,x){var s=0;for(var i=1;i<y.length;i++)s+=0.5*(y[i]+y[i-1])*(x[i]-x[i-1]);return s}
+
+function ppgDedup(samples){if(!samples.length)return[];var r=[samples[0]];var ks=['red','green','blue','L','a','b'];for(var i=1;i<samples.length;i++){var d=false;for(var k=0;k<ks.length;k++){if(Math.abs(samples[i][ks[k]]-samples[i-1][ks[k]])>1e-9){d=true;break}}if(d)r.push(samples[i])}return r}
+function ppgTrim(samples){var ci=-1;for(var i=0;i<samples.length;i++){if(samples[i].red>=PPG_MIN_RED){ci=i;break}}if(ci===-1)return[];var post=samples.slice(ci);var t0=post[0].time_ms;var settled=post.filter(function(s){return s.time_ms>=t0+PPG_SETTLE});return settled.length<20?[]:settled}
+function ppgFs(samples){var d=[];for(var i=1;i<samples.length;i++)d.push(samples[i].time_ms-samples[i-1].time_ms);d.sort(function(a,b){return a-b});return 1000/d[Math.floor(d.length/2)]}
+function ppgZNorm(v){var n=v.length,sm=0;for(var i=0;i<n;i++)sm+=v[i];var mn=sm/n,sq=0;for(var i=0;i<n;i++)sq+=(v[i]-mn)*(v[i]-mn);var st=Math.sqrt(sq/n);var r=new Float64Array(n);if(st<1e-10)return r;for(var i=0;i<n;i++)r[i]=(v[i]-mn)/st;return r}
+
+// Butterworth bandpass via cascaded biquads
+function ppgBqLP(fc,fs,Q){var w=2*Math.PI*fc/fs,al=Math.sin(w)/(2*Q),c=Math.cos(w),a0=1+al;return{b:[(1-c)/2/a0,(1-c)/a0,(1-c)/2/a0],a:[1,-2*c/a0,(1-al)/a0]}}
+function ppgBqHP(fc,fs,Q){var w=2*Math.PI*fc/fs,al=Math.sin(w)/(2*Q),c=Math.cos(w),a0=1+al;return{b:[(1+c)/2/a0,-(1+c)/a0,(1+c)/2/a0],a:[1,-2*c/a0,(1-al)/a0]}}
+function ppgSOS(lo,hi,fs){var Q1=Math.abs(1/(2*Math.cos(5*Math.PI/8))),Q2=Math.abs(1/(2*Math.cos(7*Math.PI/8)));return[ppgBqHP(lo,fs,Q1),ppgBqHP(lo,fs,Q2),ppgBqLP(hi,fs,Q1),ppgBqLP(hi,fs,Q2)]}
+function ppgBiquad(b,a,x){var n=x.length,y=new Float64Array(n),z1=0,z2=0;for(var i=0;i<n;i++){y[i]=b[0]*x[i]+z1;z1=b[1]*x[i]-a[1]*y[i]+z2;z2=b[2]*x[i]-a[2]*y[i]}return y}
+function ppgApplySOS(sec,x){var y=x;for(var s=0;s<sec.length;s++)y=ppgBiquad(sec[s].b,sec[s].a,y);return y}
+function ppgFiltfilt(sec,x){var n=x.length,pl=Math.min(3*2*sec.length,n-1);if(n<=pl+1){var f=ppgApplySOS(sec,x);var rv=new Float64Array(n);for(var i=0;i<n;i++)rv[i]=f[n-1-i];var bk=ppgApplySOS(sec,rv);var r=new Float64Array(n);for(var i=0;i<n;i++)r[i]=bk[n-1-i];return r}var pd=new Float64Array(n+2*pl);for(var i=0;i<pl;i++)pd[i]=2*x[0]-x[pl-i];for(var i=0;i<n;i++)pd[pl+i]=x[i];for(var i=0;i<pl;i++)pd[pl+n+i]=2*x[n-1]-x[n-2-i];var y=ppgApplySOS(sec,pd);var yR=new Float64Array(y.length);for(var i=0;i<y.length;i++)yR[i]=y[y.length-1-i];var yB=ppgApplySOS(sec,yR);var res=new Float64Array(n);for(var i=0;i<n;i++)res[i]=yB[yB.length-1-pl-i];return res}
+
+// FFT (Radix-2 Cooley-Tukey)
+function ppgNP2(n){var p=1;while(p<n)p<<=1;return p}
+function ppgFFT(re,im){var n=re.length,j=0;for(var i=0;i<n-1;i++){if(i<j){var t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}var m=n>>1;while(m>=1&&j>=m){j-=m;m>>=1}j+=m}for(var sz=2;sz<=n;sz*=2){var h=sz/2,ag=-2*Math.PI/sz,wR=Math.cos(ag),wI=Math.sin(ag);for(var i=0;i<n;i+=sz){var cR=1,cI=0;for(var k=0;k<h;k++){var ei=i+k,oi=i+k+h;var tR=cR*re[oi]-cI*im[oi],tI=cR*im[oi]+cI*re[oi];re[oi]=re[ei]-tR;im[oi]=im[ei]-tI;re[ei]+=tR;im[ei]+=tI;var nR=cR*wR-cI*wI;cI=cR*wI+cI*wR;cR=nR}}}return{re:re,im:im}}
+function ppgRFFT(sig){var N=ppgNP2(sig.length);var re=new Float64Array(N),im=new Float64Array(N);for(var i=0;i<sig.length;i++)re[i]=sig[i];var r=ppgFFT(re,im);var nF=Math.floor(N/2)+1;var out=[];for(var i=0;i<nF;i++)out.push({re:r.re[i],im:r.im[i]});return{data:out,N:N}}
+
+// Welch PSD
+function ppgWelch(sig,fs){var n=sig.length,np=Math.min(n,Math.floor(4*fs));if(np<8)np=n;var no=Math.floor(np/2),st=np-no;var win=new Float64Array(np),wSq=0;for(var i=0;i<np;i++){win[i]=0.5*(1-Math.cos(2*Math.PI*i/(np-1)));wSq+=win[i]*win[i]}var nfft=ppgNP2(np),nF=Math.floor(nfft/2)+1;var freqs=new Float64Array(nF);for(var i=0;i<nF;i++)freqs[i]=i*fs/nfft;var ps=new Float64Array(nF),ns=0;for(var s=0;s+np<=n;s+=st){var sg=new Float64Array(nfft);for(var i=0;i<np;i++)sg[i]=sig[s+i]*win[i];var ft=ppgRFFT(sg);for(var i=0;i<nF;i++){var pw=ft.data[i].re*ft.data[i].re+ft.data[i].im*ft.data[i].im;pw/=(fs*wSq);if(i>0&&i<nF-1)pw*=2;ps[i]+=pw}ns++}if(ns===0){var sg=new Float64Array(nfft);for(var i=0;i<Math.min(n,np);i++)sg[i]=sig[i]*win[Math.min(i,np-1)];var ft=ppgRFFT(sg);for(var i=0;i<nF;i++){var pw=ft.data[i].re*ft.data[i].re+ft.data[i].im*ft.data[i].im;pw/=(fs*wSq);if(i>0&&i<nF-1)pw*=2;ps[i]=pw}ns=1}var psd=new Float64Array(nF);for(var i=0;i<nF;i++)psd[i]=ps[i]/ns;return{freqs:freqs,psd:psd}}
+
+// Channel SNR
+function ppgSNR(filtered,fs){var r=ppgWelch(filtered,fs);var freqs=r.freqs,psd=r.psd;var bI=[];for(var i=0;i<freqs.length;i++)if(freqs[i]>=PPG_LO&&freqs[i]<=PPG_HI)bI.push(i);if(bI.length<3)return{snr:0,peakFreq:0};var bF=bI.map(function(i){return freqs[i]}),bP=bI.map(function(i){return psd[i]});var pi=0;for(var i=1;i<bP.length;i++)if(bP[i]>bP[pi])pi=i;var pF=bF[pi];var sI=[],nI=[];for(var i=0;i<bF.length;i++){if(Math.abs(bF[i]-pF)<=PPG_FW)sI.push(i);else nI.push(i)}var sP=sI.length>1?ppgTrapz(sI.map(function(i){return bP[i]}),sI.map(function(i){return bF[i]})):bP[pi];var nP=nI.length>1?ppgTrapz(nI.map(function(i){return bP[i]}),nI.map(function(i){return bF[i]})):1e-10;return{snr:sP/Math.max(nP,1e-10),peakFreq:pF}}
+
+// Sign alignment & Pearson correlation
+function ppgPearson(x,y){var n=x.length,sX=0,sY=0,sXY=0,sX2=0,sY2=0;for(var i=0;i<n;i++){sX+=x[i];sY+=y[i];sXY+=x[i]*y[i];sX2+=x[i]*x[i];sY2+=y[i]*y[i]}var num=n*sXY-sX*sY,den=Math.sqrt((n*sX2-sX*sX)*(n*sY2-sY*sY));return den<1e-10?0:num/den}
+function ppgSignAlign(filtered){var ref=filtered[PPG_REF];var signs={};for(var i=0;i<PPG_CH.length;i++){var ch=PPG_CH[i];if(ch===PPG_REF){signs[ch]=1;continue}signs[ch]=ppgPearson(Array.from(filtered[ch]),Array.from(ref))>=0?1:-1}return signs}
+
+// Peak detection
+function ppgFindPeaks(sig,params){var dist=params.distance,ht=params.height,prom=params.prominence;var n=sig.length,cands=[];for(var i=1;i<n-1;i++)if(sig[i]>sig[i-1]&&sig[i]>=sig[i+1])cands.push(i);var peaks=cands.filter(function(i){return sig[i]>=ht});peaks=peaks.filter(function(pk){var v=sig[pk],lm=v,rm=v;for(var i=pk-1;i>=0;i--){lm=Math.min(lm,sig[i]);if(sig[i]>v)break}for(var i=pk+1;i<n;i++){rm=Math.min(rm,sig[i]);if(sig[i]>v)break}return v-Math.max(lm,rm)>=prom});var sorted=peaks.slice().sort(function(a,b){return sig[b]-sig[a]});var keep={},supp={};for(var i=0;i<sorted.length;i++){var p=sorted[i];if(supp[p])continue;keep[p]=true;for(var j=0;j<sorted.length;j++){var q=sorted[j];if(q!==p&&Math.abs(q-p)<dist)supp[q]=true}}return Object.keys(keep).map(Number).sort(function(a,b){return a-b})}
+
+// Complete pipeline
+function ppgDetect(rawSamples){
+var samples=rawSamples.map(function(s){return{time_ms:s.t,red:s.r,green:s.g,blue:s.b,L:s.L,a:s.a,b:s.lb}});
+var processed=ppgDedup(samples);processed=ppgTrim(processed);
+if(processed.length<20)return{error:"Insufficient data after preprocessing"};
+var fs=ppgFs(processed);var n=processed.length;
+var chData={},normalized={},filtered={};
+var sos=ppgSOS(PPG_LO,PPG_HI,fs);
+for(var ci=0;ci<PPG_CH.length;ci++){var ch=PPG_CH[ci];var arr=new Float64Array(n);for(var i=0;i<n;i++)arr[i]=processed[i][ch];chData[ch]=arr;normalized[ch]=ppgZNorm(arr);filtered[ch]=ppgFiltfilt(sos,normalized[ch])}
+var snrs={},peakFreqs={};
+for(var ci=0;ci<PPG_CH.length;ci++){var ch=PPG_CH[ci];var sr=ppgSNR(filtered[ch],fs);snrs[ch]=sr.snr;peakFreqs[ch]=sr.peakFreq}
+var signs=ppgSignAlign(filtered);
+var totalSNR=0;for(var ci=0;ci<PPG_CH.length;ci++)totalSNR+=snrs[PPG_CH[ci]];
+var weights={};if(totalSNR<1e-10){for(var ci=0;ci<PPG_CH.length;ci++)weights[PPG_CH[ci]]=1/PPG_CH.length}else{for(var ci=0;ci<PPG_CH.length;ci++)weights[PPG_CH[ci]]=snrs[PPG_CH[ci]]/totalSNR}
+var ppg=new Float64Array(n);for(var ci=0;ci<PPG_CH.length;ci++){var ch=PPG_CH[ci],w=weights[ch]*signs[ch],f=filtered[ch];for(var i=0;i<n;i++)ppg[i]+=w*f[i]}
+var ppgF=ppgFiltfilt(sos,ppg);
+var cSNR=ppgSNR(ppgF,fs);var domFreq=cSNR.peakFreq;if(domFreq<0.5)domFreq=1.2;
+var expIBI=fs/domFreq,minDist=Math.max(Math.floor(expIBI*0.5),1);
+var ppgArr=Array.from(ppgF);var pos=ppgArr.filter(function(v){return v>0});
+var medAmp=pos.length>0?ppgMedian(pos):ppgStd(ppgArr);
+var minH=0.3*medAmp,minP=0.3*ppgStd(ppgArr);
+var peaks=ppgFindPeaks(ppgArr,{distance:minDist,height:minH,prominence:minP});
+// Heart rate from peaks
+if(peaks.length<2)return{error:"Could not detect enough heartbeats"};
+var ibi=[];for(var i=1;i<peaks.length;i++)ibi.push((peaks[i]-peaks[i-1])/fs*1000);
+var hr=ibi.map(function(v){return 60000/v});
+var rej=hr.map(function(v){return v<PPG_MIN_BPM||v>PPG_MAX_BPM});
+var vHR=hr.filter(function(_,i){return!rej[i]});
+var meanHR=NaN;if(vHR.length>0){var sm=0;for(var i=0;i<vHR.length;i++)sm+=vHR[i];meanHR=sm/vHR.length}
+var vIBI=ibi.filter(function(_,i){return!rej[i]});
+var rmssd=NaN;if(vIBI.length>1){var sq=0;for(var i=1;i<vIBI.length;i++)sq+=(vIBI[i]-vIBI[i-1])*(vIBI[i]-vIBI[i-1]);rmssd=Math.sqrt(sq/(vIBI.length-1))}
+return{meanHR:meanHR,beatCount:peaks.length,rmssd:rmssd,domBPM:Math.round(domFreq*60),rejected:rej.filter(function(r){return r}).length,total:rej.length,weights:weights,snrs:snrs,fs:fs}}
+
+// RGB to LAB conversion for camera capture
+function ppgRgbToLab(r,g,b){var rl=r/255,gl=g/255,bl=b/255;rl=rl>0.04045?Math.pow((rl+0.055)/1.055,2.4):rl/12.92;gl=gl>0.04045?Math.pow((gl+0.055)/1.055,2.4):gl/12.92;bl=bl>0.04045?Math.pow((bl+0.055)/1.055,2.4):bl/12.92;var x=(rl*0.4124564+gl*0.3575761+bl*0.1804375)/0.95047;var y=(rl*0.2126729+gl*0.7151522+bl*0.0721750)/1.00000;var z=(rl*0.0193339+gl*0.1191920+bl*0.9503041)/1.08883;var fx=x>0.008856?Math.pow(x,1/3):(903.3*x+16)/116;var fy=y>0.008856?Math.pow(y,1/3):(903.3*y+16)/116;var fz=z>0.008856?Math.pow(z,1/3):(903.3*z+16)/116;return{L:116*fy-16,a:500*(fx-fy),b:200*(fy-fz)}}
+
 function HRMonitor(props){
 var onClose=props.onClose;
 var _p=useState("ready"),phase=_p[0],setPhase=_p[1];
@@ -147,15 +223,12 @@ var DURATION=15000;
 var cleanup=function(){if(streamRef.current){streamRef.current.getVideoTracks().forEach(function(t){try{t.applyConstraints({advanced:[{torch:false}]})}catch(ex){}t.stop()});streamRef.current=null}if(rafRef.current)cancelAnimationFrame(rafRef.current)};
 var startMeasure=function(){
 setPhase("measuring");setProgress(0);setBpm(0);samplesRef.current=[];startRef.current=Date.now();
-// Two-step: first get any camera (triggers permission), then find rear by label/ID
 navigator.mediaDevices.getUserMedia({video:true}).then(function(tempStream){
-// Stop temp stream, now we have permission and labels are populated
 tempStream.getTracks().forEach(function(t){t.stop()});
 return navigator.mediaDevices.enumerateDevices();
 }).then(function(devices){
 var cameras=devices.filter(function(d){return d.kind==="videoinput"});
 var rear=cameras.find(function(d){return /back|rear|environment/i.test(d.label)});
-// If no label match, on iOS the last videoinput is typically the rear camera
 if(!rear&&cameras.length>1)rear=cameras[cameras.length-1];
 var constraints={video:{width:{ideal:64},height:{ideal:64}}};
 if(rear){constraints.video.deviceId={exact:rear.deviceId}}else{constraints.video.facingMode="environment"}
@@ -163,7 +236,6 @@ return navigator.mediaDevices.getUserMedia(constraints);
 }).then(function(stream){
 streamRef.current=stream;
 var v=vidRef.current;v.srcObject=stream;v.play().then(function(){
-// Enable torch AFTER play - iOS requires track to be active first
 var track=stream.getVideoTracks()[0];
 setTimeout(function(){try{track.applyConstraints({advanced:[{torch:true}]}).catch(function(){})}catch(ex){}},300);
 var canvas=canRef.current;canvas.width=32;canvas.height=32;var ctx=canvas.getContext("2d",{willReadFrequently:true});
@@ -171,76 +243,26 @@ var processFrame=function(){
 var elapsed=Date.now()-startRef.current;setProgress(Math.min(elapsed/DURATION,1));
 if(elapsed>=DURATION){analyzeSignal();return}
 ctx.drawImage(v,0,0,32,32);var d=ctx.getImageData(0,0,32,32).data;
-var sum=0;for(var i=0;i<d.length;i+=4)sum+=d[i];
-samplesRef.current.push({t:elapsed,r:sum/(32*32)});
+var rS=0,gS=0,bS=0,px=32*32;
+for(var i=0;i<d.length;i+=4){rS+=d[i];gS+=d[i+1];bS+=d[i+2]}
+var avgR=rS/px,avgG=gS/px,avgB=bS/px;
+var lab=ppgRgbToLab(avgR,avgG,avgB);
+samplesRef.current.push({t:elapsed,r:avgR,g:avgG,b:avgB,L:lab.L,a:lab.a,lb:lab.b});
 rafRef.current=requestAnimationFrame(processFrame)};
 rafRef.current=requestAnimationFrame(processFrame)})
 }).catch(function(){setQuality("Camera access denied");setPhase("done");cleanup()})};
 
 var analyzeSignal=function(){
-cleanup();var raw=samplesRef.current;if(raw.length<80){setQuality("Not enough data");setPhase("done");return}
-var stable=raw.filter(function(s){return s.t>=2000});
-if(stable.length<60){setQuality("Not enough stable data");setPhase("done");return}
-var vals=stable.map(function(s){return s.r});
-var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
-if(mx-mn<0.3){setQuality("Signal too weak (range: "+Math.round((mx-mn)*100)/100+"). Press thumb firmly so it glows red.");setPhase("done");return}
-// Bandpass filter: remove DC trend and high-freq noise
-// Moving average subtract (removes drift), then smooth
-var winSize=Math.max(3,Math.floor(vals.length/8));
-var trend=[];for(var i=0;i<vals.length;i++){var s=0,c=0;for(var j=Math.max(0,i-winSize);j<=Math.min(vals.length-1,i+winSize);j++){s+=vals[j];c++}trend.push(s/c)}
-var filtered=vals.map(function(v,i){return v-trend[i]});
-// Light smoothing (window=3)
-var smooth=[];for(var i=0;i<filtered.length;i++){var s=0,c=0;for(var j=Math.max(0,i-1);j<=Math.min(filtered.length-1,i+1);j++){s+=filtered[j];c++}smooth.push(s/c)}
-var mean=smooth.reduce(function(a,b){return a+b},0)/smooth.length;
-var normed=smooth.map(function(v){return v-mean});
-var totalTime=stable[stable.length-1].t-stable[0].t;
-var sampleRate=vals.length/(totalTime/1000);
-// Compute full autocorrelation for 40-180 BPM range
-var minLag=Math.floor(sampleRate*60/180);
-var maxLag=Math.floor(sampleRate*60/40);
-if(maxLag>=normed.length/2)maxLag=Math.floor(normed.length/2)-1;
-if(minLag<2)minLag=2;
-var corrs=[];
-for(var lag=minLag;lag<=maxLag;lag++){
-var sum=0,n=normed.length-lag;
-for(var i=0;i<n;i++)sum+=normed[i]*normed[i+lag];
-corrs.push({lag:lag,corr:sum/n})}
-// Normalize correlations
-var maxCorr=Math.max.apply(null,corrs.map(function(c){return c.corr}));
-if(maxCorr<=0){setQuality("No periodic signal detected");setPhase("done");return}
-// Find ALL peaks in autocorrelation (local maxima)
-var peaks=[];
-for(var i=1;i<corrs.length-1;i++){
-if(corrs[i].corr>corrs[i-1].corr&&corrs[i].corr>corrs[i+1].corr&&corrs[i].corr>maxCorr*0.3){
-peaks.push(corrs[i])}}
-if(peaks.length===0){setQuality("No clear heartbeat detected. Hold very still.");setPhase("done");return}
-// Sort peaks by lag DESCENDING (longest period = lowest BPM first)
-peaks.sort(function(a,b){return b.lag-a.lag});
-// Pick the fundamental: longest-period peak that is strong enough
-// The fundamental will be at the longest lag; harmonics at lag/2, lag/3 etc.
-var fundamental=null;
-for(var i=0;i<peaks.length;i++){
-var p=peaks[i];
-// Check: is this a real fundamental or just noise at long lag?
-// A real fundamental should have harmonics at lag/2, lag/3
-var hasHarmonic=false;
-for(var j=0;j<peaks.length;j++){
-if(i===j)continue;
-var ratio=p.lag/peaks[j].lag;
-// Check if another peak is near 2x or 3x frequency (lag/2 or lag/3)
-if(Math.abs(ratio-2)<0.15||Math.abs(ratio-3)<0.15){hasHarmonic=true;break}}
-if(hasHarmonic||p.corr>maxCorr*0.6){fundamental=p;break}}
-if(!fundamental)fundamental=peaks[peaks.length-1];// fallback to strongest short-lag peak
-var bpmResult=Math.round(sampleRate*60/fundamental.lag);
-// Parabolic interpolation to refine
-var idx=fundamental.lag-minLag;
-if(idx>0&&idx<corrs.length-1){
-var cL=corrs[idx-1].corr,cM=corrs[idx].corr,cR=corrs[idx+1].corr;
-if(cL<cM&&cR<cM){var shift=(cL-cR)/(2*(cL-2*cM+cR));bpmResult=Math.round(sampleRate*60/(fundamental.lag+shift))}}
-var confidence=fundamental.corr/maxCorr;
-if(bpmResult<40||bpmResult>180){setQuality("Reading: "+bpmResult+" BPM. Try again with firm, still pressure.");setPhase("done");return}
-setBpm(bpmResult);setQuality("good");setPhase("done");
-console.log("HR: "+bpmResult+", conf: "+Math.round(confidence*100)+"%, peaks found: "+peaks.length+", fundamental lag: "+fundamental.lag+", samples: "+stable.length+", rate: "+Math.round(sampleRate)+"Hz")};
+cleanup();var raw=samplesRef.current;
+if(raw.length<60){setQuality("Not enough data ("+raw.length+" samples)");setPhase("done");return}
+try{
+var result=ppgDetect(raw);
+if(result.error){setQuality(result.error+". Press thumb firmly so it glows red.");setPhase("done");return}
+var hr=Math.round(result.meanHR);
+if(isNaN(hr)||hr<PPG_MIN_BPM||hr>PPG_MAX_BPM){setQuality("Reading out of range. Try again with firm, still pressure.");setPhase("done");return}
+setBpm(hr);setQuality("good");setPhase("done");
+console.log("HR PPGv2: "+hr+" BPM, beats:"+result.beatCount+", dom:"+result.domBPM+", fs:"+Math.round(result.fs)+"Hz, rejected:"+result.rejected+"/"+result.total);
+}catch(err){setQuality("Analysis error: "+err.message);setPhase("done")}};
 
 useEffect(function(){return cleanup},[]);
 
