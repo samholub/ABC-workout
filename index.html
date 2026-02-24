@@ -213,16 +213,29 @@ function ppgRgbToLab(r,g,b){var rl=r/255,gl=g/255,bl=b/255;rl=rl>0.04045?Math.po
 
 function HRMonitor(props){
 var onClose=props.onClose;
+// UI state
 var _p=useState("ready"),phase=_p[0],setPhase=_p[1];
 var _b=useState(0),bpm=_b[0],setBpm=_b[1];
 var _q=useState(""),quality=_q[0],setQuality=_q[1];
 var _pr=useState(0),progress=_pr[0],setProgress=_pr[1];
-var vidRef=useRef(null),canRef=useRef(null),samplesRef=useRef([]),streamRef=useRef(null),rafRef=useRef(null),startRef=useRef(0);
-var DURATION=15000;
+var _cq=useState("none"),contactQ=_cq[0],setContactQ=_cq[1];
+var _cp=useState(0),contactPct=_cp[0],setContactPct=_cp[1];
+var _ss=useState(0),sigStr=_ss[0],setSigStr=_ss[1];
+var _pv=useState(false),pulseVis=_pv[0],setPulseVis=_pv[1];
+// Refs (real-time, no re-render)
+var vidRef=useRef(null),canRef=useRef(null);
+var samplesRef=useRef([]),streamRef=useRef(null),rafRef=useRef(null);
+var startRef=useRef(0),phaseRef=useRef("ready");
+var contactCntRef=useRef(0),lastUIRef=useRef(0);
+var recentRedRef=useRef([]),prevDeltaRef=useRef(0),lastBeatRef=useRef(0);
+var DURATION=15000,CONTACT_MIN=100,CONTACT_FRAMES=30;
 
 var cleanup=function(){if(streamRef.current){streamRef.current.getVideoTracks().forEach(function(t){try{t.applyConstraints({advanced:[{torch:false}]})}catch(ex){}t.stop()});streamRef.current=null}if(rafRef.current)cancelAnimationFrame(rafRef.current)};
-var startMeasure=function(){
-setPhase("measuring");setProgress(0);setBpm(0);samplesRef.current=[];startRef.current=Date.now();
+
+var startCamera=function(){
+setPhase("preparing");phaseRef.current="preparing";
+contactCntRef.current=0;setContactQ("none");setContactPct(0);
+samplesRef.current=[];recentRedRef.current=[];prevDeltaRef.current=0;lastBeatRef.current=0;
 navigator.mediaDevices.getUserMedia({video:true}).then(function(tempStream){
 tempStream.getTracks().forEach(function(t){t.stop()});
 return navigator.mediaDevices.enumerateDevices();
@@ -238,52 +251,119 @@ streamRef.current=stream;
 var v=vidRef.current;v.srcObject=stream;v.play().then(function(){
 var track=stream.getVideoTracks()[0];
 setTimeout(function(){try{track.applyConstraints({advanced:[{torch:true}]}).catch(function(){})}catch(ex){}},300);
-var canvas=canRef.current;canvas.width=32;canvas.height=32;var ctx=canvas.getContext("2d",{willReadFrequently:true});
+var canvas=canRef.current;canvas.width=32;canvas.height=32;
+var ctx=canvas.getContext("2d",{willReadFrequently:true});
 var processFrame=function(){
-var elapsed=Date.now()-startRef.current;setProgress(Math.min(elapsed/DURATION,1));
-if(elapsed>=DURATION){analyzeSignal();return}
+var now=Date.now();
 ctx.drawImage(v,0,0,32,32);var d=ctx.getImageData(0,0,32,32).data;
 var rS=0,gS=0,bS=0,px=32*32;
 for(var i=0;i<d.length;i+=4){rS+=d[i];gS+=d[i+1];bS+=d[i+2]}
 var avgR=rS/px,avgG=gS/px,avgB=bS/px;
 var lab=ppgRgbToLab(avgR,avgG,avgB);
+var cp=phaseRef.current;
+// === PREPARING: contact detection ===
+if(cp==="preparing"){
+if(avgR>=CONTACT_MIN){
+contactCntRef.current++;
+if(contactCntRef.current>=CONTACT_FRAMES){
+phaseRef.current="measuring";setPhase("measuring");setContactQ("good");
+startRef.current=Date.now();samplesRef.current=[];recentRedRef.current=[];
+}else if(now-lastUIRef.current>150){
+var pct=Math.round(contactCntRef.current/CONTACT_FRAMES*100);
+setContactPct(pct);setContactQ(pct>40?"adjusting":"weak");lastUIRef.current=now}
+}else{contactCntRef.current=Math.max(0,contactCntRef.current-2);
+if(now-lastUIRef.current>150){var pct2=Math.round(Math.max(0,contactCntRef.current)/CONTACT_FRAMES*100);setContactPct(pct2);setContactQ(pct2>10?"weak":"none");lastUIRef.current=now}}
+}
+// === MEASURING: record + live feedback ===
+if(cp==="measuring"){
+var elapsed=now-startRef.current;
 samplesRef.current.push({t:elapsed,r:avgR,g:avgG,b:avgB,L:lab.L,a:lab.a,lb:lab.b});
+// Live pulse detection on red channel
+var recent=recentRedRef.current;recent.push(avgR);if(recent.length>20)recent.shift();
+if(recent.length>=5){
+var rmn=0;for(var ri=0;ri<recent.length;ri++)rmn+=recent[ri];rmn/=recent.length;
+var delta=avgR-rmn;var pDelta=prevDeltaRef.current;
+if(pDelta>0.03&&delta<-0.03&&now-lastBeatRef.current>300){
+lastBeatRef.current=now;setPulseVis(true);setTimeout(function(){setPulseVis(false)},150)}
+prevDeltaRef.current=delta}
+// Signal strength from recent amplitude range
+if(recent.length>=10){
+var rMin=recent[0],rMax=recent[0];
+for(var ri=1;ri<recent.length;ri++){if(recent[ri]<rMin)rMin=recent[ri];if(recent[ri]>rMax)rMax=recent[ri]}
+var str=Math.min(1,(rMax-rMin)/2.0);
+if(now-lastUIRef.current>150){setSigStr(str);setProgress(Math.min(elapsed/DURATION,1));lastUIRef.current=now}
+}else if(now-lastUIRef.current>150){setProgress(Math.min(elapsed/DURATION,1));lastUIRef.current=now}
+if(elapsed>=DURATION){analyzeSignal();return}
+}
 rafRef.current=requestAnimationFrame(processFrame)};
 rafRef.current=requestAnimationFrame(processFrame)})
-}).catch(function(){setQuality("Camera access denied");setPhase("done");cleanup()})};
+}).catch(function(err){setQuality("Camera error: "+(err.message||"access denied"));setPhase("done");cleanup()})};
 
 var analyzeSignal=function(){
 cleanup();var raw=samplesRef.current;
-if(raw.length<60){setQuality("Not enough data ("+raw.length+" samples)");setPhase("done");return}
+if(raw.length<60){setQuality("Not enough data ("+raw.length+" samples). Keep finger pressed firmly for the full 15 seconds.");setPhase("done");return}
 try{
 var result=ppgDetect(raw);
-if(result.error){setQuality(result.error+". Press thumb firmly so it glows red.");setPhase("done");return}
+if(result.error){
+var msg=result.error;
+if(raw.filter(function(s){return s.r>=CONTACT_MIN}).length<raw.length*0.5)msg="Finger contact lost during recording. Keep steady pressure the entire time.";
+else if(raw.length<100)msg="Signal too short. Keep your finger pressed firmly for the full duration.";
+else msg+=". Press thumb firmly over the flashlight and hold very still.";
+setQuality(msg);setPhase("done");return}
 var hr=Math.round(result.meanHR);
-if(isNaN(hr)||hr<PPG_MIN_BPM||hr>PPG_MAX_BPM){setQuality("Reading out of range. Try again with firm, still pressure.");setPhase("done");return}
+if(isNaN(hr)||hr<PPG_MIN_BPM||hr>PPG_MAX_BPM){setQuality("Reading out of range"+(isNaN(hr)?"":" ("+hr+" BPM)")+". Try again with firm, still pressure.");setPhase("done");return}
+if(result.total>0&&result.rejected/result.total>0.5){setQuality("Unstable reading \u2014 too much movement detected. Hold your finger completely still and breathe normally.");setPhase("done");return}
 setBpm(hr);setQuality("good");setPhase("done");
-console.log("HR PPGv2: "+hr+" BPM, beats:"+result.beatCount+", dom:"+result.domBPM+", fs:"+Math.round(result.fs)+"Hz, rejected:"+result.rejected+"/"+result.total);
-}catch(err){setQuality("Analysis error: "+err.message);setPhase("done")}};
+if(navigator.vibrate)navigator.vibrate([150,50,150]);
+console.log("HR PPGv2: "+hr+" BPM, beats:"+result.beatCount+", dom:"+result.domBPM+"BPM, fs:"+Math.round(result.fs)+"Hz, rej:"+result.rejected+"/"+result.total);
+}catch(err){setQuality("Analysis error. Try again with steady, firm finger pressure.");setPhase("done")}};
 
 useEffect(function(){return cleanup},[]);
 
 var hrMsg=bpm<=100?"Fully recovered \u2014 go for it":bpm<=120?"Recovered \u2014 good to go":bpm<=140?"Still elevated \u2014 consider more rest":"Still working hard \u2014 take your time";
 var hrClr=bpm<=100?"#10B981":bpm<=120?"#6EE7B7":bpm<=140?"#FBBF24":"#EF4444";
+var cqClr=contactQ==="good"?"#10B981":contactQ==="adjusting"?"#FBBF24":contactQ==="weak"?"#F97316":"#78716C";
+var cqMsg=contactQ==="good"?"Good contact \u2014 starting...":contactQ==="adjusting"?"Hold still...":contactQ==="weak"?"Press more firmly...":"Place finger on camera";
+var ssClr=sigStr>0.5?"#10B981":sigStr>0.2?"#FBBF24":"#EF4444";
 
 return e("div",{style:{position:"fixed",inset:0,zIndex:150,display:"flex",alignItems:"center",justifyContent:"center",padding:20},onClick:function(){cleanup();onClose()}},
 e("div",{style:{position:"absolute",inset:0,background:"#000000dd"}}),
 e("div",{onClick:function(ev){ev.stopPropagation()},style:{position:"relative",width:"100%",maxWidth:340,background:"#1C1917",borderRadius:16,padding:"24px 20px",border:"1px solid #292524"}},
 e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
 e("div",{style:{fontSize:17,fontWeight:700,color:"#F5F5F4"}},"\u2764\uFE0F Heart Rate Check"),
-e("div",{style:{fontSize:10,color:"#78716C",background:"#292524",borderRadius:4,padding:"2px 6px"}},"Experimental")),
+e("div",{style:{fontSize:10,color:"#78716C",background:"#292524",borderRadius:4,padding:"2px 6px"}},"PPG v2")),
 e("video",{ref:vidRef,playsInline:true,muted:true,style:{width:1,height:1,opacity:0,position:"absolute"}}),
 e("canvas",{ref:canRef,style:{display:"none"}}),
+// === READY ===
 phase==="ready"&&e("div",null,
-e("div",{style:{fontSize:14,color:"#A8A29E",lineHeight:1.6,marginBottom:16}},"Cover the ",e("span",{style:{color:"#F5F5F4",fontWeight:600}},"flashlight and ONE camera lens")," with your fingertip. Leave the other lens uncovered. Hold still for 15 seconds."),
-e("button",{onClick:startMeasure,style:{width:"100%",padding:14,background:"#991B4D",border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:600,cursor:"pointer"}},"Start Measurement")),
+e("div",{style:{fontSize:14,color:"#A8A29E",lineHeight:1.6,marginBottom:16}},"Cover the ",e("span",{style:{color:"#F5F5F4",fontWeight:600}},"flashlight and ONE camera lens")," with your fingertip. Leave the other lens uncovered."),
+e("div",{style:{fontSize:12,color:"#78716C",marginBottom:16,lineHeight:1.5}},"Recording starts automatically once good finger contact is detected."),
+e("button",{onClick:startCamera,style:{width:"100%",padding:14,background:"#991B4D",border:"none",borderRadius:12,color:"#fff",fontSize:15,fontWeight:600,cursor:"pointer"}},"Open Camera")),
+// === PREPARING: contact detection ===
+phase==="preparing"&&e("div",{style:{textAlign:"center"}},
+e("div",{style:{width:90,height:90,borderRadius:45,border:"3px solid "+cqClr,margin:"0 auto 14px",display:"flex",alignItems:"center",justifyContent:"center",transition:"border-color 0.3s, background 0.3s",background:contactQ==="good"?"#052e1c":contactQ==="adjusting"?"#2a2000":"transparent"}},
+e("div",{style:{fontSize:contactQ==="none"?14:26,color:contactQ==="none"?"#78716C":"#fff",transition:"transform 0.2s",transform:contactQ==="adjusting"?"scale(1.05)":"scale(1)"}},
+contactQ==="none"?"\u261D\uFE0F Waiting...":contactQ==="weak"?"\u{1F534}":"\u2764\uFE0F")),
+e("div",{style:{fontSize:14,color:cqClr,fontWeight:600,marginBottom:8,transition:"color 0.3s"}},cqMsg),
+e("div",{style:{height:4,background:"#292524",borderRadius:2,overflow:"hidden",marginBottom:8}},
+e("div",{style:{height:"100%",width:contactPct+"%",background:cqClr,transition:"width 0.2s, background 0.3s"}})),
+e("div",{style:{fontSize:11,color:"#78716C"}},"Recording starts automatically"),
+e("button",{onClick:function(){cleanup();setPhase("ready")},style:{marginTop:12,padding:"8px 16px",background:"transparent",border:"1px solid #44403C",borderRadius:8,color:"#A8A29E",fontSize:12,cursor:"pointer"}},"Cancel")),
+// === MEASURING ===
 phase==="measuring"&&e("div",{style:{textAlign:"center"}},
-e("div",{style:{fontSize:14,color:"#F9A8D4",marginBottom:12}},"Hold finger on camera..."),
-e("div",{style:{height:6,background:"#292524",borderRadius:3,overflow:"hidden",marginBottom:8}},e("div",{style:{height:"100%",width:(progress*100)+"%",background:"#EC4899",transition:"width 0.3s"}})),
+e("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",gap:14,marginBottom:14}},
+e("div",{style:{width:50,height:50,borderRadius:25,background:pulseVis?"#BE185D":"#1a0a12",border:"2px solid "+(pulseVis?"#EC4899":"#44203C"),display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.1s ease-out",transform:pulseVis?"scale(1.2)":"scale(1)",boxShadow:pulseVis?"0 0 16px #EC489966":"none"}},
+e("div",{style:{fontSize:22}},"\u2764\uFE0F")),
+e("div",{style:{flex:1,maxWidth:140,textAlign:"left"}},
+e("div",{style:{fontSize:10,color:"#78716C",marginBottom:3}},"Signal strength"),
+e("div",{style:{height:5,background:"#292524",borderRadius:3,overflow:"hidden"}},
+e("div",{style:{height:"100%",width:Math.max(5,sigStr*100)+"%",background:ssClr,transition:"width 0.3s, background 0.3s"}})),
+e("div",{style:{fontSize:9,color:ssClr,marginTop:2,transition:"color 0.3s"}},sigStr>0.5?"Strong":sigStr>0.2?"Moderate":"Weak"))),
+e("div",{style:{fontSize:14,color:"#F9A8D4",marginBottom:10}},"Hold still \u2014 recording..."),
+e("div",{style:{height:6,background:"#292524",borderRadius:3,overflow:"hidden",marginBottom:6}},
+e("div",{style:{height:"100%",width:Math.max(1,progress*100)+"%",background:"#EC4899",transition:"width 0.2s"}})),
 e("div",{style:{fontSize:12,color:"#78716C"}},Math.round(progress*15)+"s / 15s")),
+// === DONE ===
 phase==="done"&&e("div",{style:{textAlign:"center"}},
 quality==="good"?e("div",null,
 e("div",{style:{fontSize:48,fontWeight:700,color:hrClr,fontFamily:"'JetBrains Mono',monospace",marginBottom:4}},bpm),
@@ -291,7 +371,7 @@ e("div",{style:{fontSize:13,color:"#78716C",marginBottom:10}},"beats per minute"
 e("div",{style:{fontSize:14,color:hrClr,fontWeight:600,marginBottom:16}},hrMsg)):
 e("div",null,e("div",{style:{fontSize:14,color:"#FBBF24",marginBottom:16,lineHeight:1.5}},quality)),
 e("div",{style:{display:"flex",gap:8,marginTop:4}},
-e("button",{onClick:function(){setPhase("ready");setBpm(0);setQuality("");setProgress(0)},style:{flex:1,padding:12,background:"#292524",border:"1px solid #44403C",borderRadius:10,color:"#E7E5E4",fontSize:14,cursor:"pointer"}},"Retry"),
+e("button",{onClick:function(){setPhase("ready");phaseRef.current="ready";setBpm(0);setQuality("");setProgress(0);setSigStr(0);setContactQ("none");setContactPct(0)},style:{flex:1,padding:12,background:"#292524",border:"1px solid #44403C",borderRadius:10,color:"#E7E5E4",fontSize:14,cursor:"pointer"}},"Retry"),
 e("button",{onClick:function(){cleanup();onClose()},style:{flex:1,padding:12,background:"#292524",border:"1px solid #44403C",borderRadius:10,color:"#E7E5E4",fontSize:14,cursor:"pointer"}},"Close")))))
 }
 
