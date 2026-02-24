@@ -14,16 +14,25 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{height:100%}
+html,body{height:100%;overflow:hidden}
 body{font-family:'DM Sans',-apple-system,sans-serif;color:#F5F5F4;background:#0C0A09;
-padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);
-height:100dvh;overflow:hidden}
+padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 #root{height:100%;overflow:hidden}
 input,select,textarea,button{font-family:inherit}
 input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type="number"]{-moz-appearance:textfield}
 input[type="range"]{width:100%;accent-color:#F59E0B}
 </style>
+<script>
+// iOS PWA viewport fix: window.innerHeight is always correct, 100dvh/100vh are not on initial load
+(function(){
+  function setH(){document.documentElement.style.height=window.innerHeight+'px'}
+  setH();
+  window.addEventListener('resize',setH);
+  // iOS fires orientationchange separately from resize
+  window.addEventListener('orientationchange',function(){setTimeout(setH,100)});
+})();
+</script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 </head>
