@@ -8,15 +8,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ABC Workout">
 <meta name="theme-color" content="#0C0A09">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiQUJDIEN5Y2xlIFRyYWNrZXIiLCJzaG9ydF9uYW1lIjoiQUJDIFdvcmtvdXQiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzBDMEEwOSIsInRoZW1lX2NvbG9yIjoiIzBDMEEwOSIsImljb25zIjpbXX0=">
 <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxODAgMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjQwIiBmaWxsPSIjMUMxOTE3Ii8+PHRleHQgeD0iOTAiIHk9IjEwNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InN5c3RlbS11aSIgZm9udC13ZWlnaHQ9IjgwMCIgZm9udC1zaXplPSI2MCIgZmlsbD0iI0Y1OUUwQiI+QUJDPC90ZXh0Pjwvc3ZnPg==">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html{height:100%;overflow:hidden;background:#111110}
-body{height:100%;overflow:hidden;background:#0C0A09;font-family:'DM Sans',-apple-system,sans-serif;color:#F5F5F4}
-#root{height:100%;overflow:hidden;display:flex;flex-direction:column}
+html,body{height:100%;overflow:hidden;background:#0C0A09}
+body{font-family:'DM Sans',-apple-system,sans-serif;color:#F5F5F4}
+#root{position:fixed;top:0;left:0;right:0;bottom:0;overflow:hidden;display:flex;flex-direction:column}
 input,select,textarea,button{font-family:inherit}
 input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type="number"]{-moz-appearance:textfield}
@@ -521,7 +524,7 @@ var todayN=(cycleState.completedToday||[]).length;
 var weekLogs=logs.filter(function(l){return new Date(l.date)>=new Date(Date.now()-7*864e5)});
 return e("div",{style:{height:"100%",display:"flex",flexDirection:"column",background:"#0C0A09"}},
 e("div",{style:{padding:"calc(14px + env(safe-area-inset-top,0px)) 16px 10px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexShrink:0}},
-e("div",null,e("div",{style:{fontSize:12,color:"#78716C",textTransform:"uppercase",letterSpacing:2.5,fontWeight:600}},"ABC Cycle Tracker"),e("div",{style:{fontSize:26,fontWeight:700,color:"#F5F5F4",marginTop:3}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
+e("div",null,e("div",{style:{fontSize:12,color:"#78716C",textTransform:"uppercase",letterSpacing:2.5,fontWeight:600}},"ABC Cycle Tracker",e("span",{style:{fontSize:9,color:"#57534E",marginLeft:6,letterSpacing:1,textTransform:"none"}},"v11")),e("div",{style:{fontSize:26,fontWeight:700,color:"#F5F5F4",marginTop:3}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
 e("button",{onClick:function(){setShowSettings(true)},style:{background:"#292524",border:"1px solid #44403C",borderRadius:10,padding:"8px 10px",cursor:"pointer",color:"#A8A29E",fontSize:16}},"\u2699")),
 e("div",{style:{flex:1,padding:"0 14px",display:"flex",flexDirection:"column",minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch"}},
 e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}},
@@ -535,7 +538,7 @@ e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,alignContent:
 Object.keys(SESSIONS).map(function(k){var s=SESSIONS[k];var avg=getAvgTime(k,logs);return e("button",{key:k,onClick:function(){startSession(k)},style:{background:"#1C1917",border:"1px solid "+(k===rec?s.color+"66":"#292524"),borderRadius:12,padding:"10px 12px",cursor:"pointer",textAlign:"left",minHeight:70,display:"flex",flexDirection:"column",justifyContent:"center"}},e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:1}},e("div",{style:{width:7,height:7,borderRadius:"50%",background:s.color}}),e("div",{style:{fontSize:14,fontWeight:600,color:"#F5F5F4"}},s.label)),e("div",{style:{fontSize:11,color:"#78716C"}},s.time+(avg?" \u00b7 Avg: "+avg+"m":"")),s.subtitle&&e("div",{style:{fontSize:10,color:"#57534E",fontStyle:"italic"}},s.subtitle))})),
 todayN===1&&CYCLE.indexOf((cycleState.completedToday||[])[0])!==-1&&e("div",{style:{marginTop:6,background:"#1C1917",border:"1px solid #44403C",borderRadius:10,padding:"8px 12px"}},e("div",{style:{fontSize:12,color:"#FBBF24",fontWeight:600}},"\u26a1 Double Day Available")))),
 e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524"}},
-e("div",{style:{display:"flex",gap:8,padding:"10px 14px 10px"}},e("button",{onClick:function(){setShowLoads(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:12,cursor:"pointer",color:"#A8A29E",fontSize:13,fontWeight:500}},"\u{1F3AF} Load Targets"),e("button",{onClick:function(){setShowHist(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:12,cursor:"pointer",color:"#A8A29E",fontSize:13,fontWeight:500}},"\u{1F4CB} History"))),
+e("div",{style:{display:"flex",gap:8,padding:"10px 14px calc(10px + env(safe-area-inset-bottom,0px))"}},e("button",{onClick:function(){setShowLoads(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:12,cursor:"pointer",color:"#A8A29E",fontSize:13,fontWeight:500}},"\u{1F3AF} Load Targets"),e("button",{onClick:function(){setShowHist(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:12,cursor:"pointer",color:"#A8A29E",fontSize:13,fontWeight:500}},"\u{1F4CB} History"))),
 showLoads&&e(LoadTargets,{onClose:function(){setShowLoads(false)}}),showSettings&&e(SettingsSheet,{restDur:restDur,setRestDur:setRestDur,carryType:carryType,setCarryType:setCarryPref,onClose:function(){setShowSettings(false)},onReset:clearAll}))
 }
 
@@ -586,7 +589,7 @@ e("div",{style:{fontSize:14,color:scoreClr,fontWeight:600}},scoreLbl),
 tWeek>0&&e("div",{style:{marginTop:10,display:"inline-flex",alignItems:"center",gap:6,background:period.clr+"15",border:"1px solid "+period.clr+"33",borderRadius:8,padding:"4px 12px"}},
 e("span",{style:{fontSize:11,color:period.clr,fontWeight:600}},"Week "+tWeek+" \u00b7 "+period.msg)),
 score<=4&&e("div",{style:{marginTop:8,fontSize:13,color:"#A8A29E",fontStyle:"italic"}},"Loads will auto-adjust to maintain today"))),
-e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"12px 14px 12px"}},
+e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"12px 14px calc(12px + env(safe-area-inset-bottom,0px))"}},
 e("button",{onClick:function(){setScreen("warmup")},style:{width:"100%",padding:16,background:sess.color,border:"none",borderRadius:14,color:"#fff",fontSize:16,fontWeight:700,cursor:"pointer"}},"Continue \u2192")))
 }
 
@@ -612,7 +615,7 @@ e("div",null,e("div",{style:{display:"flex",alignItems:"center",gap:6}},e("span"
 e("span",{style:{fontSize:10,color:"#57534E",marginLeft:8}},isPeeking?"\u25B2":"\u25BC")),
 e("button",{onClick:function(){setWarmup(w.id);setScreen("workout")},style:{background:sess.color,border:"none",borderRadius:8,color:"#fff",padding:"8px 14px",fontSize:13,fontWeight:600,cursor:"pointer",flexShrink:0}},"Start")),
 isPeeking&&e("div",{style:{padding:"0 14px 12px",borderTop:"1px solid #292524",paddingTop:10}},w.steps.map(function(s,i){return e("div",{key:i,style:{fontSize:12,color:"#A8A29E",marginBottom:3,lineHeight:1.4}},s)})))}))),
-e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"10px 14px 10px"}},
+e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"10px 14px calc(10px + env(safe-area-inset-bottom,0px))"}},
 e("button",{onClick:function(){setWarmup("skip");setScreen("workout")},style:{width:"100%",background:"transparent",border:"1px dashed #44403C",borderRadius:12,padding:14,cursor:"pointer",color:"#78716C",fontSize:14}},"Skip Warm-Up \u2192")))
 }
 
@@ -652,7 +655,7 @@ if(jd!==-1&&jd<ns.length-1)setTimer(ex.id+"-"+jd);
 var justDone=ns.every(function(s){return s.completed});
 if(justDone){var nextEx=null;for(var ni=0;ni<sess.exercises.length;ni++){var nid=sess.exercises[ni].id;var nsets=nid===ex.id?ns:(u[nid]||[]);if(!nsets.every(function(s){return s.completed})){nextEx=nid;break}}
 if(nextEx)setTimeout(function(){setActiveEx(nextEx)},400)}}})})),
-e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"12px 16px 12px"}},
+e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"12px 16px calc(12px + env(safe-area-inset-bottom,0px))"}},
 e("button",{onClick:function(){setScreen("complete")},style:{width:"100%",padding:16,background:allDone?sess.color:"#292524",border:allDone?"none":"1px solid #44403C",borderRadius:14,cursor:"pointer",color:allDone?"#fff":"#A8A29E",fontSize:16,fontWeight:700}},allDone?"Complete Session \u2713":"Finish Session ("+done+"/"+total+" sets)")),
 showLoads&&e(LoadTargets,{onClose:function(){setShowLoads(false)}}),
 showHR&&e(HRMonitor,{onClose:function(){setShowHR(false)},onRecovered:function(){setShowHR(false);setTimer(null)}}))
@@ -675,7 +678,7 @@ sess.exercises.map(function(ex){var sets=(exData[ex.id]||[]).filter(function(s){
 return e("div",{key:ex.id,style:{background:"#1C1917",borderRadius:10,padding:"10px 14px",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}},e("div",{style:{fontSize:13,color:"#E7E5E4",fontWeight:500}},ex.name),e("div",{style:{fontSize:12,color:"#78716C",fontFamily:"'JetBrains Mono',monospace"}},sets.map(function(s){return(s.reps||"-")+(s.weight?"@"+s.weight:"")}).join(" | ")))})),
 e("div",{style:{width:"100%",maxWidth:380}},
 e("div",{style:{background:"#1C1917",border:"1px solid #292524",borderRadius:12,overflow:"hidden"}},e("textarea",{value:notes.notes,onChange:function(ev){setNotes({notes:ev.target.value})},placeholder:"Quick notes...",rows:2,style:{width:"100%",background:"transparent",border:"none",color:"#E7E5E4",padding:"12px 14px",fontSize:14,resize:"none",outline:"none",lineHeight:1.5}})))),
-e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"12px 20px 12px"}},
+e("div",{style:{flexShrink:0,background:"#111110",borderTop:"1px solid #292524",padding:"12px 20px calc(12px + env(safe-area-inset-bottom,0px))"}},
 e("div",{style:{fontSize:13,color:"#78716C",textAlign:"center",marginBottom:10}},"Next: ",e("span",{style:{color:SESSIONS[next]?SESSIONS[next].color:"#78716C",fontWeight:600}},SESSIONS[next]?SESSIONS[next].label:"")),
 e("button",{onClick:saveAndFinish,style:{width:"100%",padding:"14px",background:sess.color,border:"none",borderRadius:12,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer"}},"Save & Done")))
 }
