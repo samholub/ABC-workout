@@ -40,7 +40,8 @@ var LOAD_TARGETS=[{name:"Bulgarian Split Squat",w12:"BW-15",w34:"15-25",w58:"25-
 var SESSIONS={A:{label:"Session A",time:"15 min",color:"#F59E0B",exercises:[{id:"bss-a",name:"Bulgarian Split Squats",sets:3,reps:"8-10/leg",hasWeight:true},{id:"pushup",name:"Push-Ups",sets:3,reps:"8-15",hasWeight:false},{id:"carry-a",name:"Suitcase Carry",sets:3,reps:"40 yd/side",hasWeight:true,isCarry:true}]},B:{label:"Session B",time:"15 min",color:"#3B82F6",exercises:[{id:"sldl-b",name:"Single-Leg Deadlifts",sets:3,reps:"8-10/leg",hasWeight:true},{id:"row",name:"Single-Arm Rows",sets:3,reps:"8-12/arm",hasWeight:true},{id:"carry-b",name:"Carries",sets:3,reps:"40 yd/side",hasWeight:true,isCarry:true}]},C:{label:"Session C",time:"20 min",color:"#10B981",exercises:[{id:"bss-c",name:"Bulgarian Split Squats",sets:3,reps:"8-10/leg",hasWeight:true},{id:"pullup",name:"Pull-Ups / Chin-Ups",sets:3,reps:"max reps",hasWeight:false,note:"Sets 1-2: Pull-ups. Final set: Chin-ups"},{id:"sldl-c",name:"Single-Leg Deadlifts",sets:3,reps:"8-10/leg",hasWeight:true}]},modC:{label:"Modified C",time:"15-18 min",color:"#8B5CF6",subtitle:"After A+B double-day",exercises:[{id:"ohp",name:"SA Overhead Press",sets:3,reps:"8-10/arm",hasWeight:true},{id:"pullup-mc",name:"Pull-Ups / Chin-Ups",sets:3,reps:"max reps",hasWeight:false,note:"Sets 1-2: Pull-ups. Final set: Chin-ups"},{id:"carry-mc",name:"Carries",sets:3,reps:"40 yd/side",hasWeight:true,isCarry:true,note:"From dropped B session"}]},TGU:{label:"Turkish Get-Up",time:"15 min",color:"#EC4899",subtitle:"Optional variety session",exercises:[{id:"tgu",name:"Turkish Get-Up",sets:1,reps:"5/side",hasWeight:true,note:"Light-moderate weight. Movement quality focus"}]}};
 var WARMUPS=[{id:"enhanced",label:"Enhanced 3D",time:"8-10 min",icon:"\u{1F525}",steps:["Hip Mobility (3 min): 90/90 transitions 5-8/side, deep squat hold 30-60s, hip circles 10 each","3D Lunge Matrix (3 min): 2x5 each - forward, lateral, curtsy lunges","Upper Body (2-3 min): Thoracic rotations 8/side, scapular pulls or dead hang, easy push-ups 5-8","Integration (1 min): Inchworms 3-5, World's Greatest Stretch 3-5/side"]},{id:"standard",label:"Standard 3D",time:"5 min",icon:"\u26a1",steps:["2x5 each direction: Forward lunges, lateral lunges, curtsy lunges"]},{id:"hip",label:"Hip Mobility",time:"5 min",icon:"\u{1F9B5}",steps:["General movement (1 min): Jumping jacks, arm circles","Hip mobility (2 min): Leg swings fwd/back 10 each, side-to-side 10 each, hip circles 10 each","Movement prep (2 min): BW squats 10, easy push-ups 5-10, dead hang 30s"]},{id:"quick",label:"Emergency",time:"1-3 min",icon:"\u{1F4A8}",steps:["20 jumping jacks + 10 bodyweight squats. That's it. Go."]}];
 var CYCLE=["A","B","C"];
-var hPad=isPWA?12:44;
+var topPad=isPWA?"20px 20px 20px":"48px 20px 20px";
+var topPadHome=isPWA?"20px 20px 24px":"48px 20px 24px";
 
 function RestTimer(props){
 var duration=props.duration||90,onDone=props.onDone;
@@ -209,7 +210,6 @@ var _cd=useState(null),confirmDel=_cd[0],setConfirmDel=_cd[1];
 var _sa=useState(false),showAddLog=_sa[0],setShowAddLog=_sa[1];
 var _nl=useState({session:"A",date:"",energy:7,notes:""}),newLog=_nl[0],setNewLog=_nl[1];
 var _sw=useState(false),showWarmupRef=_sw[0],setShowWarmupRef=_sw[1];
-var _ex=useState(null),expandedLog=_ex[0],setExpandedLog=_ex[1];
 
 var setRestDur=function(v){setRestDurState(v);S.set(KEYS.rest,v)};
 var setCarryPref=function(v){setCarryType(v);S.set(KEYS.carry,v)};
@@ -261,11 +261,11 @@ home()
 
 var saveVid=function(exId,url){var u=Object.assign({},videoUrls);u[exId]=url;setVideoUrls(u);S.set(KEYS.videos,u)};
 var changeCarry=function(t){setCarryType(t);S.set(KEYS.carry,t)};
-var home=function(){setScreen("home");setCurrent(null);setWarmup(null);setExData({});setTimer(null);setShowHist(false);setShowLoads(false);setShowAddLog(false);setShowSettings(false);setShowWarmupRef(false);setExpandedLog(null)};
+var home=function(){setScreen("home");setCurrent(null);setWarmup(null);setExData({});setTimer(null);setShowHist(false);setShowLoads(false);setShowAddLog(false);setShowSettings(false);setShowWarmupRef(false)};
 
 var deleteLog=function(idx){
 var nl=logs.filter(function(_,i){return i!==idx});
-setLogs(nl);S.set(KEYS.logs,nl);setConfirmDel(null);setExpandedLog(null)
+setLogs(nl);S.set(KEYS.logs,nl);setConfirmDel(null)
 };
 
 var addManualLog=function(){
@@ -282,147 +282,116 @@ S.set(KEYS.state,empty);S.set(KEYS.weights,{});S.set(KEYS.logs,[]);S.set(KEYS.vi
 setShowSettings(false);setShowHist(false)
 };
 
-// Helper: format exercise name from ID
-var exName=function(id){
-var allEx={};
-Object.keys(SESSIONS).forEach(function(k){SESSIONS[k].exercises.forEach(function(ex){allEx[ex.id]=ex.name})});
-return allEx[id]||id
-};
-
 var rec=getRec();
 
-// HOME - compact layout to eliminate scroll
+// HOME
 if(screen==="home"&&!showHist){
 var daysSince=cycleState.lastDate?Math.floor((Date.now()-new Date(cycleState.lastDate).getTime())/86400000):null;
 var todayN=(cycleState.completedToday||[]).length;
 var weekLogs=logs.filter(function(l){return new Date(l.date)>=new Date(Date.now()-7*864e5)});
-return e("div",{style:{minHeight:"100dvh",background:"#0C0A09",display:"flex",flexDirection:"column"}},
-e("div",{style:{padding:hPad+"px 16px 12px",background:"linear-gradient(180deg,#1C1917,#0C0A09)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
+return e("div",{style:{minHeight:"100dvh",background:"#0C0A09",paddingBottom:32}},
+e("div",{style:{padding:topPadHome,background:"linear-gradient(180deg,#1C1917,#0C0A09)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}},
 e("div",null,
-e("div",{style:{fontSize:12,color:"#78716C",textTransform:"uppercase",letterSpacing:2.5,fontWeight:600}},"ABC Cycle Tracker"),
-e("div",{style:{fontSize:24,fontWeight:700,color:"#F5F5F4",marginTop:2}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
-e("button",{onClick:function(){setShowSettings(true)},style:{background:"#292524",border:"1px solid #44403C",borderRadius:10,padding:"7px 9px",cursor:"pointer",color:"#A8A29E",fontSize:15}},"\u2699")),
-e("div",{style:{padding:"0 12px",flex:1,display:"flex",flexDirection:"column"}},
-// Status row
-e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:10}},
+e("div",{style:{fontSize:13,color:"#78716C",textTransform:"uppercase",letterSpacing:3,fontWeight:600}},"ABC Cycle Tracker"),
+e("div",{style:{fontSize:28,fontWeight:700,color:"#F5F5F4",marginTop:4}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
+e("button",{onClick:function(){setShowSettings(true)},style:{background:"#292524",border:"1px solid #44403C",borderRadius:10,padding:"8px 10px",cursor:"pointer",color:"#A8A29E",fontSize:16,marginTop:4}},"\u2699")),
+e("div",{style:{padding:"0 16px"}},
+e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}},
 [{l:"Last",v:cycleState.lastSession?(SESSIONS[cycleState.lastSession]?SESSIONS[cycleState.lastSession].label.replace("Session ",""):cycleState.lastSession):"\u2014",s:daysSince!==null?(daysSince===0?"Today":daysSince+"d ago"):""},
 {l:"Next Up",v:rec,s:SESSIONS[rec].time},
 {l:"This Week",v:weekLogs.length,s:"sessions"}
-].map(function(c,i){return e("div",{key:i,style:{background:"#1C1917",borderRadius:10,padding:"10px 10px",border:"1px solid #292524"}},
-e("div",{style:{fontSize:10,color:"#78716C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},c.l),
-e("div",{style:{fontSize:20,fontWeight:700,color:"#F5F5F4",marginTop:2,fontFamily:"'JetBrains Mono',monospace"}},c.v),
-e("div",{style:{fontSize:11,color:"#78716C",marginTop:1}},c.s))})),
-// CTA
-e("button",{onClick:function(){startSession(rec)},style:{width:"100%",padding:"14px 16px",background:"linear-gradient(135deg,"+SESSIONS[rec].color+"22,"+SESSIONS[rec].color+"11)",border:"2px solid "+SESSIONS[rec].color,borderRadius:14,cursor:"pointer",textAlign:"left",marginBottom:10}},
+].map(function(c,i){return e("div",{key:i,style:{background:"#1C1917",borderRadius:12,padding:"12px 10px",border:"1px solid #292524"}},
+e("div",{style:{fontSize:11,color:"#78716C",textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},c.l),
+e("div",{style:{fontSize:22,fontWeight:700,color:"#F5F5F4",marginTop:4,fontFamily:"'JetBrains Mono',monospace"}},c.v),
+e("div",{style:{fontSize:12,color:"#78716C",marginTop:2}},c.s))})),
+e("button",{onClick:function(){startSession(rec)},style:{width:"100%",padding:"18px 20px",background:"linear-gradient(135deg,"+SESSIONS[rec].color+"22,"+SESSIONS[rec].color+"11)",border:"2px solid "+SESSIONS[rec].color,borderRadius:16,cursor:"pointer",textAlign:"left",marginBottom:12}},
 e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
 e("div",null,
-e("div",{style:{fontSize:11,color:SESSIONS[rec].color,textTransform:"uppercase",letterSpacing:2,fontWeight:700}},"Recommended"),
-e("div",{style:{fontSize:20,fontWeight:700,color:"#F5F5F4",marginTop:2}},SESSIONS[rec].label),
-e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:1}},SESSIONS[rec].time+" | "+SESSIONS[rec].exercises.length+" exercises")),
-e("div",{style:{width:42,height:42,borderRadius:"50%",background:SESSIONS[rec].color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#fff",fontWeight:700}},"\u2192"))),
-// All sessions label
-e("div",{style:{fontSize:11,color:"#78716C",textTransform:"uppercase",letterSpacing:2,fontWeight:600,margin:"6px 0 6px",paddingLeft:2}},"All Sessions"),
-// Session grid - compact
-e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}},
-Object.keys(SESSIONS).map(function(k){var s=SESSIONS[k];return e("button",{key:k,onClick:function(){startSession(k)},style:{background:"#1C1917",border:"1px solid "+(k===rec?s.color+"66":"#292524"),borderRadius:10,padding:"10px 10px",cursor:"pointer",textAlign:"left"}},
-e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:2}},
-e("div",{style:{width:7,height:7,borderRadius:"50%",background:s.color}}),
-e("div",{style:{fontSize:14,fontWeight:600,color:"#F5F5F4"}},s.label)),
-e("div",{style:{fontSize:11,color:"#78716C"}},s.time),
-s.subtitle&&e("div",{style:{fontSize:10,color:"#57534E",fontStyle:"italic"}},s.subtitle))})),
-// Double day
-todayN===1&&CYCLE.indexOf((cycleState.completedToday||[])[0])!==-1&&e("div",{style:{marginTop:8,background:"#1C1917",border:"1px solid #44403C",borderRadius:10,padding:"10px 12px"}},
-e("div",{style:{fontSize:12,color:"#FBBF24",fontWeight:600}},"\u26a1 Double Day Available"),
-e("div",{style:{fontSize:11,color:"#78716C",marginTop:2}},"Carries shift to Modified C tomorrow.")),
-// Footer buttons
-e("div",{style:{display:"flex",gap:6,marginTop:10,paddingBottom:8}},
-e("button",{onClick:function(){setShowLoads(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:10,padding:10,cursor:"pointer",color:"#A8A29E",fontSize:12,fontWeight:500}},"\u{1F3AF} Load Targets"),
-e("button",{onClick:function(){setShowHist(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:10,padding:10,cursor:"pointer",color:"#A8A29E",fontSize:12,fontWeight:500}},"\u{1F4CB} History"))),
+e("div",{style:{fontSize:12,color:SESSIONS[rec].color,textTransform:"uppercase",letterSpacing:2,fontWeight:700}},"Recommended"),
+e("div",{style:{fontSize:22,fontWeight:700,color:"#F5F5F4",marginTop:4}},SESSIONS[rec].label),
+e("div",{style:{fontSize:14,color:"#A8A29E",marginTop:2}},SESSIONS[rec].time+" | "+SESSIONS[rec].exercises.length+" exercises")),
+e("div",{style:{width:48,height:48,borderRadius:"50%",background:SESSIONS[rec].color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"#fff",fontWeight:700}},"\u2192"))),
+e("div",{style:{fontSize:12,color:"#78716C",textTransform:"uppercase",letterSpacing:2,fontWeight:600,margin:"16px 0 8px",paddingLeft:4}},"All Sessions"),
+e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
+Object.keys(SESSIONS).map(function(k){var s=SESSIONS[k];return e("button",{key:k,onClick:function(){startSession(k)},style:{background:"#1C1917",border:"1px solid "+(k===rec?s.color+"66":"#292524"),borderRadius:12,padding:"12px",cursor:"pointer",textAlign:"left"}},
+e("div",{style:{width:8,height:8,borderRadius:"50%",background:s.color,marginBottom:6}}),
+e("div",{style:{fontSize:15,fontWeight:600,color:"#F5F5F4"}},s.label),
+e("div",{style:{fontSize:12,color:"#78716C",marginTop:2}},s.time),
+s.subtitle&&e("div",{style:{fontSize:11,color:"#57534E",marginTop:2,fontStyle:"italic"}},s.subtitle))})),
+todayN===1&&CYCLE.indexOf((cycleState.completedToday||[])[0])!==-1&&e("div",{style:{marginTop:12,background:"#1C1917",border:"1px solid #44403C",borderRadius:12,padding:"12px 16px"}},
+e("div",{style:{fontSize:13,color:"#FBBF24",fontWeight:600}},"\u26a1 Double Day Available"),
+e("div",{style:{fontSize:12,color:"#78716C",marginTop:4}},"You did "+SESSIONS[cycleState.completedToday[0]].label+" earlier. Carries shift to Modified C tomorrow.")),
+e("div",{style:{display:"flex",gap:8,marginTop:14}},
+e("button",{onClick:function(){setShowLoads(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:12,cursor:"pointer",color:"#A8A29E",fontSize:13,fontWeight:500}},"\u{1F3AF} Load Targets"),
+e("button",{onClick:function(){setShowHist(true)},style:{flex:1,background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:12,cursor:"pointer",color:"#A8A29E",fontSize:13,fontWeight:500}},"\u{1F4CB} History"))),
 showLoads&&e(LoadTargets,{onClose:function(){setShowLoads(false)}}),
 showSettings&&e(SettingsSheet,{restDur:restDur,setRestDur:setRestDur,carryType:carryType,setCarryType:setCarryPref,onClose:function(){setShowSettings(false)},onReset:clearAll}))
 }
 
-// HISTORY - expandable entries with set detail
+// HISTORY
 if(showHist){
 return e("div",{style:{minHeight:"100dvh",background:"#0C0A09",paddingBottom:32}},
-e("div",{style:{padding:hPad+"px 16px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,#1C1917,#0C0A09)"}},
+e("div",{style:{padding:topPad,display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,#1C1917,#0C0A09)"}},
 e("div",{style:{display:"flex",alignItems:"center",gap:12}},
-e("button",{onClick:function(){setShowHist(false);setShowAddLog(false);setExpandedLog(null)},style:{background:"#292524",border:"none",borderRadius:8,color:"#F5F5F4",padding:"8px 14px",fontSize:14,cursor:"pointer"}},"\u2190 Back"),
-e("div",{style:{fontSize:20,fontWeight:700,color:"#F5F5F4"}},"History")),
+e("button",{onClick:function(){setShowHist(false);setShowAddLog(false)},style:{background:"#292524",border:"none",borderRadius:8,color:"#F5F5F4",padding:"8px 14px",fontSize:14,cursor:"pointer"}},"\u2190 Back"),
+e("div",{style:{fontSize:22,fontWeight:700,color:"#F5F5F4"}},"History")),
 e("button",{onClick:function(){setShowAddLog(true)},style:{background:"#292524",border:"1px solid #44403C",borderRadius:8,color:"#A8A29E",padding:"8px 12px",fontSize:13,cursor:"pointer"}},"+ Log")),
-e("div",{style:{padding:"0 12px"}},
-showAddLog&&e("div",{style:{background:"#1C1917",border:"1px solid #44403C",borderRadius:14,padding:"14px",marginBottom:12}},
-e("div",{style:{fontSize:15,fontWeight:600,color:"#F5F5F4",marginBottom:10}},"Log Past Session"),
-e("div",{style:{marginBottom:8}},
+e("div",{style:{padding:"0 16px"}},
+showAddLog&&e("div",{style:{background:"#1C1917",border:"1px solid #44403C",borderRadius:14,padding:"16px",marginBottom:16}},
+e("div",{style:{fontSize:15,fontWeight:600,color:"#F5F5F4",marginBottom:12}},"Log Past Session"),
+e("div",{style:{marginBottom:10}},
 e("div",{style:{fontSize:12,color:"#78716C",marginBottom:4}},"Date"),
 e("input",{type:"date",value:newLog.date,onChange:function(ev){setNewLog(Object.assign({},newLog,{date:ev.target.value}))},style:{width:"100%",background:"#292524",border:"1px solid #44403C",borderRadius:8,color:"#F5F5F4",padding:"10px 12px",fontSize:14,outline:"none",colorScheme:"dark"}})),
-e("div",{style:{marginBottom:8}},
+e("div",{style:{marginBottom:10}},
 e("div",{style:{fontSize:12,color:"#78716C",marginBottom:4}},"Session"),
 e("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-Object.keys(SESSIONS).map(function(k){var s=SESSIONS[k];return e("button",{key:k,onClick:function(){setNewLog(Object.assign({},newLog,{session:k}))},style:{padding:"5px 10px",borderRadius:8,fontSize:12,cursor:"pointer",fontWeight:newLog.session===k?600:400,background:newLog.session===k?s.color+"33":"#292524",border:"1px solid "+(newLog.session===k?s.color:"#44403C"),color:newLog.session===k?s.color:"#A8A29E"}},s.label)}))),
-e("div",{style:{marginBottom:8}},
+Object.keys(SESSIONS).map(function(k){var s=SESSIONS[k];return e("button",{key:k,onClick:function(){setNewLog(Object.assign({},newLog,{session:k}))},style:{padding:"6px 12px",borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:newLog.session===k?600:400,background:newLog.session===k?s.color+"33":"#292524",border:"1px solid "+(newLog.session===k?s.color:"#44403C"),color:newLog.session===k?s.color:"#A8A29E"}},s.label)}))),
+e("div",{style:{marginBottom:10}},
 e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
 e("span",{style:{fontSize:12,color:"#78716C"}},"Energy"),
 e("span",{style:{fontSize:14,fontWeight:700,color:"#FBBF24",fontFamily:"'JetBrains Mono',monospace"}},newLog.energy+"/10")),
 e("input",{type:"range",min:1,max:10,value:newLog.energy,onChange:function(ev){setNewLog(Object.assign({},newLog,{energy:Number(ev.target.value)}))}})),
-e("textarea",{value:newLog.notes,onChange:function(ev){setNewLog(Object.assign({},newLog,{notes:ev.target.value}))},placeholder:"Notes (optional)...",rows:2,style:{width:"100%",background:"#292524",border:"1px solid #44403C",borderRadius:8,color:"#E7E5E4",padding:"10px 12px",fontSize:14,resize:"none",outline:"none",marginBottom:8,lineHeight:1.5}}),
+e("textarea",{value:newLog.notes,onChange:function(ev){setNewLog(Object.assign({},newLog,{notes:ev.target.value}))},placeholder:"Notes (optional)...",rows:2,style:{width:"100%",background:"#292524",border:"1px solid #44403C",borderRadius:8,color:"#E7E5E4",padding:"10px 12px",fontSize:14,resize:"none",outline:"none",marginBottom:10,lineHeight:1.5}}),
 e("div",{style:{display:"flex",gap:8}},
 e("button",{onClick:function(){setShowAddLog(false)},style:{flex:1,padding:"10px",background:"#292524",border:"1px solid #44403C",borderRadius:8,color:"#A8A29E",fontSize:14,cursor:"pointer"}},"Cancel"),
 e("button",{onClick:addManualLog,style:{flex:1,padding:"10px",background:newLog.date?"#F59E0B":"#44403C",border:"none",borderRadius:8,color:newLog.date?"#1C1917":"#78716C",fontSize:14,fontWeight:600,cursor:newLog.date?"pointer":"default"}},"Save"))),
 logs.length===0?e("div",{style:{color:"#78716C",textAlign:"center",padding:40,fontSize:14}},"No sessions yet. Get after it!"):
-logs.slice(0,50).map(function(l,i){var s=SESSIONS[l.session];var d=new Date(l.date);var isExpanded=expandedLog===i;
-var hasDetail=l.exercises&&l.exercises.length>0&&l.exercises.some(function(ex){return ex.sets&&ex.sets.length>0});
-return e("div",{key:i,style:{background:"#1C1917",border:"1px solid "+(isExpanded?"#44403C":"#292524"),borderRadius:12,padding:"12px 14px",marginBottom:6,cursor:hasDetail?"pointer":"default"},onClick:function(){if(hasDetail)setExpandedLog(isExpanded?null:i)}},
+logs.slice(0,50).map(function(l,i){var s=SESSIONS[l.session];var d=new Date(l.date);
+return e("div",{key:i,style:{background:"#1C1917",border:"1px solid #292524",borderRadius:12,padding:"14px 16px",marginBottom:8}},
 e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
 e("div",{style:{display:"flex",alignItems:"center",gap:8}},
 e("span",{style:{width:8,height:8,borderRadius:"50%",background:s?s.color:"#78716C"}}),
 e("span",{style:{fontSize:15,fontWeight:600,color:"#F5F5F4"}},s?s.label:l.session),
 l.manual&&e("span",{style:{fontSize:10,color:"#78716C",background:"#292524",borderRadius:4,padding:"1px 6px"}},"manual")),
-e("div",{style:{display:"flex",alignItems:"center",gap:6}},
-l.duration>0&&e("span",{style:{fontSize:12,color:"#78716C"}},l.duration+"m"),
-hasDetail&&e("span",{style:{fontSize:10,color:"#57534E"}},isExpanded?"\u25B2":"\u25BC"),
-e("button",{onClick:function(ev){ev.stopPropagation();setConfirmDel(i)},style:{background:"transparent",border:"none",color:"#57534E",fontSize:14,cursor:"pointer",padding:"2px 4px",lineHeight:1}},"\u{1F5D1}"))),
-e("div",{style:{fontSize:12,color:"#78716C",marginTop:3}},
+e("div",{style:{display:"flex",alignItems:"center",gap:8}},
+l.duration>0&&e("span",{style:{fontSize:12,color:"#78716C"}},l.duration+" min"),
+e("button",{onClick:function(){setConfirmDel(i)},style:{background:"transparent",border:"none",color:"#57534E",fontSize:16,cursor:"pointer",padding:"2px 4px",lineHeight:1}},"\u{1F5D1}"))),
+e("div",{style:{fontSize:12,color:"#78716C",marginTop:4}},
 d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})+
 (l.energy?" | Energy: "+l.energy+"/10":"")+
-(hasDetail?" | "+l.exercises.reduce(function(a,x){return a+x.sets.length},0)+" sets":"")),
-// Expanded detail: per-exercise breakdown
-isExpanded&&hasDetail&&e("div",{style:{marginTop:8,borderTop:"1px solid #292524",paddingTop:8}},
-l.exercises.filter(function(ex){return ex.sets&&ex.sets.length>0}).map(function(ex,j){
-return e("div",{key:j,style:{marginBottom:j<l.exercises.length-1?6:0}},
-e("div",{style:{fontSize:12,fontWeight:600,color:"#A8A29E",marginBottom:2}},exName(ex.id)),
-e("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-ex.sets.map(function(set,k){
-var label="";
-if(set.weight&&set.reps)label=set.weight+"x"+set.reps;
-else if(set.reps)label=set.reps+" reps";
-else if(set.weight)label=set.weight+" lbs";
-else label="-";
-if(set.rpe)label+=" @"+set.rpe;
-return e("span",{key:k,style:{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:"#E7E5E4",background:"#292524",borderRadius:6,padding:"3px 8px"}},label)
-})))})),
+(l.exercises&&l.exercises.length>0?" | "+l.exercises.reduce(function(a,x){return a+x.sets.length},0)+" sets":"")),
 l.notes&&e("div",{style:{fontSize:12,color:"#A8A29E",marginTop:6,fontStyle:"italic",borderTop:"1px solid #292524",paddingTop:6}},l.notes))})),
-confirmDel!==null&&e(ConfirmDialog,{title:"Delete Session?",message:"Remove this session from your history?",confirmLabel:"Delete",danger:true,onCancel:function(){setConfirmDel(null)},onConfirm:function(){deleteLog(confirmDel)}}))
+confirmDel!==null&&e(ConfirmDialog,{title:"Delete Session?",message:"Remove this session from your history? This can't be undone.",confirmLabel:"Delete",danger:true,onCancel:function(){setConfirmDel(null)},onConfirm:function(){deleteLog(confirmDel)}}))
 }
 
 // WARMUP
 if(screen==="warmup"){
 var sess=SESSIONS[currentSession];
 return e("div",{style:{minHeight:"100dvh",background:"#0C0A09",paddingBottom:32}},
-e("div",{style:{padding:hPad+"px 16px 12px",background:"linear-gradient(180deg,"+sess.color+"15,#0C0A09)"}},
-e("button",{onClick:home,style:{background:"#292524",border:"none",borderRadius:8,color:"#F5F5F4",padding:"8px 14px",fontSize:14,cursor:"pointer",marginBottom:12}},"\u2190 Cancel"),
+e("div",{style:{padding:topPad,background:"linear-gradient(180deg,"+sess.color+"15,#0C0A09)"}},
+e("button",{onClick:home,style:{background:"#292524",border:"none",borderRadius:8,color:"#F5F5F4",padding:"8px 14px",fontSize:14,cursor:"pointer",marginBottom:16}},"\u2190 Cancel"),
 e("div",{style:{fontSize:13,color:sess.color,textTransform:"uppercase",letterSpacing:2,fontWeight:700}},"Starting "+sess.label),
 e("div",{style:{fontSize:24,fontWeight:700,color:"#F5F5F4",marginTop:4}},"Pick Your Warm-Up")),
-e("div",{style:{padding:"8px 12px"}},
-WARMUPS.map(function(w){return e("button",{key:w.id,onClick:function(){setWarmup(w.id);setScreen("workout")},style:{width:"100%",background:"#1C1917",border:"1px solid #292524",borderRadius:14,padding:14,marginBottom:8,cursor:"pointer",textAlign:"left"}},
+e("div",{style:{padding:"12px 16px"}},
+WARMUPS.map(function(w){return e("button",{key:w.id,onClick:function(){setWarmup(w.id);setScreen("workout")},style:{width:"100%",background:"#1C1917",border:"1px solid #292524",borderRadius:14,padding:16,marginBottom:10,cursor:"pointer",textAlign:"left"}},
 e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
 e("div",{style:{display:"flex",alignItems:"center",gap:10}},
-e("span",{style:{fontSize:22}},w.icon),
-e("div",null,e("div",{style:{fontSize:15,fontWeight:600,color:"#F5F5F4"}},w.label),e("div",{style:{fontSize:12,color:"#78716C"}},w.time))),
+e("span",{style:{fontSize:24}},w.icon),
+e("div",null,e("div",{style:{fontSize:16,fontWeight:600,color:"#F5F5F4"}},w.label),e("div",{style:{fontSize:13,color:"#78716C"}},w.time))),
 e("span",{style:{color:"#44403C",fontSize:18}},"\u2192")),
-e("div",{style:{marginTop:8,borderTop:"1px solid #292524",paddingTop:8}},
-w.steps.map(function(s,i){return e("div",{key:i,style:{fontSize:12,color:"#A8A29E",marginBottom:3,lineHeight:1.4}},s)})))}),
-e("button",{onClick:function(){setWarmup("skip");setScreen("workout")},style:{width:"100%",background:"transparent",border:"1px dashed #44403C",borderRadius:12,padding:12,cursor:"pointer",color:"#78716C",fontSize:14,marginTop:2}},"Skip Warm-Up \u2192")))
+e("div",{style:{marginTop:10,borderTop:"1px solid #292524",paddingTop:10}},
+w.steps.map(function(s,i){return e("div",{key:i,style:{fontSize:13,color:"#A8A29E",marginBottom:4,lineHeight:1.5}},s)})))}),
+e("button",{onClick:function(){setWarmup("skip");setScreen("workout")},style:{width:"100%",background:"transparent",border:"1px dashed #44403C",borderRadius:12,padding:14,cursor:"pointer",color:"#78716C",fontSize:14,marginTop:4}},"Skip Warm-Up \u2192")))
 }
 
 // WORKOUT
