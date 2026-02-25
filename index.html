@@ -312,7 +312,7 @@ var hr=Math.round(result.meanHR);
 if(isNaN(hr)||hr<PPG_MIN_BPM||hr>PPG_MAX_BPM){setQuality("Reading out of range"+(isNaN(hr)?"":" ("+hr+" BPM)")+". Try again with firm, still pressure.");setPhase("done");return}
 if(result.total>0&&result.rejected/result.total>0.5){setQuality("Unstable reading \u2014 too much movement detected. Hold your finger completely still and breathe normally.");setPhase("done");return}
 setBpm(hr);setQuality("good");setPhase("done");
-if(navigator.vibrate)navigator.vibrate([150,50,150]);
+if(navigator.vibrate)navigator.vibrate([200,100,200]);
 console.log("HR PPGv2: "+hr+" BPM, beats:"+result.beatCount+", dom:"+result.domBPM+"BPM, fs:"+Math.round(result.fs)+"Hz, rej:"+result.rejected+"/"+result.total);
 }catch(err){setQuality("Analysis error. Try again with steady, firm finger pressure.");setPhase("done")}};
 
@@ -429,7 +429,8 @@ var toggleDone=function(i){var u=setData.slice();u[i]=Object.assign({},u[i]);u[i
 var weightSummary="";
 if(done>0){var ws=setData.filter(function(s){return s.completed&&s.weight}).map(function(s){return s.weight});if(ws.length>0)weightSummary=ws[ws.length-1]+" lbs"}
 if(!isExpanded){
-return e("div",{onClick:onToggle,style:{background:allDone?"#1a2e1a":"#1C1917",border:"1px solid "+(allDone?"#166534":"#292524"),borderRadius:14,marginBottom:8,padding:"14px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all 0.2s"}},e("div",{style:{display:"flex",alignItems:"center",gap:10}},e("div",{style:{width:28,height:28,borderRadius:"50%",background:allDone?"#166534":"#292524",border:"2px solid "+(allDone?"#22C55E":"#44403C"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:allDone?"#6EE7B7":"#78716C"}},allDone?"\u2713":done>0?done:""),e("div",null,e("div",{style:{fontSize:15,fontWeight:600,color:allDone?"#6EE7B7":"#F5F5F4"}},displayName),e("div",{style:{fontSize:12,color:"#78716C"}},done+"/"+setData.length+" sets"+(weightSummary?" \u00b7 "+weightSummary:"")))),e("span",{style:{color:"#57534E",fontSize:12}},"\u25BC"))
+var progReady=progression&&progression.type==="progress";
+return e("div",{onClick:onToggle,style:{background:allDone?"#1a2e1a":"#1C1917",border:"1px solid "+(allDone?"#166534":progReady?"#10B98144":"#292524"),borderRadius:14,marginBottom:8,padding:"14px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all 0.2s"}},e("div",{style:{display:"flex",alignItems:"center",gap:10}},e("div",{style:{width:28,height:28,borderRadius:"50%",background:allDone?"#166534":"#292524",border:"2px solid "+(allDone?"#22C55E":"#44403C"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:allDone?"#6EE7B7":"#78716C"}},allDone?"\u2713":done>0?done:""),e("div",null,e("div",{style:{display:"flex",alignItems:"center",gap:6}},e("span",{style:{fontSize:15,fontWeight:600,color:allDone?"#6EE7B7":"#F5F5F4"}},displayName),progReady&&e("span",{style:{fontSize:9,color:"#10B981",background:"#10B98122",borderRadius:4,padding:"2px 6px",fontWeight:700,letterSpacing:0.5}},"\u2B06 READY")),e("div",{style:{fontSize:12,color:"#78716C"}},done+"/"+setData.length+" sets"+(weightSummary?" \u00b7 "+weightSummary:"")))),e("span",{style:{color:"#57534E",fontSize:12}},"\u25BC"))
 }
 // EXPANDED
 var progClr=progression?progression.type==="progress"?"#10B981":progression.type==="maintain"?"#FBBF24":"#F97316":"";
