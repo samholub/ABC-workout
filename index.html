@@ -523,7 +523,7 @@ var todayN=(cycleState.completedToday||[]).length;
 var weekLogs=logs.filter(function(l){return new Date(l.date)>=new Date(Date.now()-7*864e5)});
 return e("div",{style:{height:"100%",display:"flex",flexDirection:"column",background:"#0C0A09"}},
 e("div",{style:{padding:"calc(14px + env(safe-area-inset-top,0px)) 16px 10px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexShrink:0}},
-e("div",null,e("div",{style:{fontSize:12,color:"#78716C",textTransform:"uppercase",letterSpacing:2.5,fontWeight:600}},"ABC Cycle Tracker",e("span",{style:{fontSize:9,color:"#57534E",marginLeft:6,letterSpacing:1,textTransform:"none"}},"v17")),e("div",{style:{fontSize:26,fontWeight:700,color:"#F5F5F4",marginTop:3}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
+e("div",null,e("div",{style:{fontSize:12,color:"#78716C",textTransform:"uppercase",letterSpacing:2.5,fontWeight:600}},"ABC Cycle Tracker",e("span",{style:{fontSize:9,color:"#57534E",marginLeft:6,letterSpacing:1,textTransform:"none"}},"v18")),e("div",{style:{fontSize:26,fontWeight:700,color:"#F5F5F4",marginTop:3}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
 e("button",{onClick:function(){setShowSettings(true)},style:{background:"#292524",border:"1px solid #44403C",borderRadius:10,padding:"8px 10px",cursor:"pointer",color:"#A8A29E",fontSize:16}},"\u2699")),
 e("div",{style:{flex:1,padding:"0 14px",display:"flex",flexDirection:"column",minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch"}},
 e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}},
