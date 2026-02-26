@@ -8,11 +8,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ABC Workout">
 <meta name="theme-color" content="#0C0A09">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiQUJDIEN5Y2xlIFRyYWNrZXIiLCJzaG9ydF9uYW1lIjoiQUJDIFdvcmtvdXQiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzBDMEEwOSIsInRoZW1lX2NvbG9yIjoiIzBDMEEwOSIsImljb25zIjpbXX0=">
 <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxODAgMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjQwIiBmaWxsPSIjMUMxOTE3Ii8+PHRleHQgeD0iOTAiIHk9IjEwNSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9InN5c3RlbS11aSIgZm9udC13ZWlnaHQ9IjgwMCIgZm9udC1zaXplPSI2MCIgZmlsbD0iI0Y1OUUwQiI+QUJDPC90ZXh0Pjwvc3ZnPg==">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:#0C0A09}
@@ -124,7 +126,7 @@ var duration=props.duration||90,onDone=props.onDone,onHR=props.onHR;
 var _r=useState(duration),rem=_r[0],setRem=_r[1];
 var _u=useState(true),run=_u[0],setRun=_u[1];
 var ref=useRef(null);
-useEffect(function(){if(run&&rem>0){ref.current=setInterval(function(){setRem(function(r){if(r<=1){clearInterval(ref.current);if(navigator.vibrate)navigator.vibrate([200,100,200]);return 0}return r-1})},1000)}return function(){clearInterval(ref.current)}},[run,rem]);
+useEffect(function(){if(run&&rem>0){ref.current=setInterval(function(){setRem(function(r){if(r<=1){clearInterval(ref.current);return 0}return r-1})},1000)}return function(){clearInterval(ref.current)}},[run,rem]);
 var pct=((duration-rem)/duration)*100;var m=Math.floor(rem/60),s=rem%60;
 return e("div",{style:{background:rem===0?"#065F46":"#1C1917",border:"1px solid "+(rem===0?"#10B981":"#44403C"),borderRadius:12,padding:"12px 16px",marginTop:8,display:"flex",alignItems:"center",gap:12}},
 e("div",{style:{flex:1}},e("div",{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:28,fontWeight:700,letterSpacing:2,color:rem===0?"#6EE7B7":"#FBBF24"}},m+":"+s.toString().padStart(2,"0")),e("div",{style:{height:3,background:"#292524",borderRadius:2,marginTop:4,overflow:"hidden"}},e("div",{style:{height:"100%",width:pct+"%",background:rem===0?"#10B981":"#F59E0B",transition:"width 1s linear"}}))),
@@ -312,7 +314,6 @@ var hr=Math.round(result.meanHR);
 if(isNaN(hr)||hr<PPG_MIN_BPM||hr>PPG_MAX_BPM){setQuality("Reading out of range"+(isNaN(hr)?"":" ("+hr+" BPM)")+". Try again with firm, still pressure.");setPhase("done");return}
 if(result.total>0&&result.rejected/result.total>0.5){setQuality("Unstable reading \u2014 too much movement detected. Hold your finger completely still and breathe normally.");setPhase("done");return}
 setBpm(hr);setQuality("good");setPhase("done");
-if(navigator.vibrate)navigator.vibrate([200,100,200]);
 console.log("HR PPGv2: "+hr+" BPM, beats:"+result.beatCount+", dom:"+result.domBPM+"BPM, fs:"+Math.round(result.fs)+"Hz, rej:"+result.rejected+"/"+result.total);
 }catch(err){setQuality("Analysis error. Try again with steady, firm finger pressure.");setPhase("done")}};
 
