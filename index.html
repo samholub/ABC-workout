@@ -536,6 +536,7 @@ var _srpe=useState(0),sessionRPE=_srpe[0],setSessionRPE=_srpe[1];
 var _ft=useState(null),floatTimer=_ft[0],setFloatTimer=_ft[1];
 var _sd=useState(""),screenDir=_sd[0],setScreenDir=_sd[1];
 var _spr=useState([]),sessionPRs=_spr[0],setSessionPRs=_spr[1];
+var _cp=useState(false),copied=_cp[0],setCopied=_cp[1];
 
 var setRestDur=function(v){setRestDurState(v);S.set(KEYS.rest,v)};
 var setCarryPref=function(v){setCarryType(v);S.set(KEYS.carry,v)};
@@ -563,7 +564,7 @@ setCycleState(ns);S.set(KEYS.state,ns);home()
 
 var saveVid=function(exId,url){var u=Object.assign({},videoUrls);u[exId]=url;setVideoUrls(u);S.set(KEYS.videos,u)};
 var changeCarry=function(t){setCarryType(t);S.set(KEYS.carry,t)};
-var home=function(){setScreen("home");setCurrent(null);setWarmup(null);setExData({});setTimer(null);setShowHist(false);setShowLoads(false);setShowAddLog(false);setShowSettings(false);setShowWarmupRef(false);setExpandedLog(null);setActiveEx(null);setWarmupPeek(null);setCircuitMode(false);setShowHR(false);setChartEx(null);setSessionRPE(0);setFloatTimer(null);setSessionPRs([])};
+var home=function(){setScreen("home");setCurrent(null);setWarmup(null);setExData({});setTimer(null);setShowHist(false);setShowLoads(false);setShowAddLog(false);setShowSettings(false);setShowWarmupRef(false);setExpandedLog(null);setActiveEx(null);setWarmupPeek(null);setCircuitMode(false);setShowHR(false);setChartEx(null);setSessionRPE(0);setFloatTimer(null);setSessionPRs([]);setCopied(false)};
 var deleteLog=function(idx){var nl=logs.filter(function(_,i){return i!==idx});setLogs(nl);S.set(KEYS.logs,nl);setConfirmDel(null);setExpandedLog(null)};
 var addManualLog=function(){if(!newLog.date)return;var log={date:new Date(newLog.date+"T12:00:00").toISOString(),session:newLog.session,duration:0,notes:newLog.notes||"Manually logged",exercises:[],manual:true};var nl=[log].concat(logs).sort(function(a,b){return new Date(b.date)-new Date(a.date)}).slice(0,100);setLogs(nl);S.set(KEYS.logs,nl);setShowAddLog(false);setNewLog({session:"A",date:"",notes:""})};
 var clearAll=function(){var empty={lastSession:null,lastDate:null,isDoubleDay:false,completedToday:[]};setCycleState(empty);setLastWeights({});setLogs([]);setVideoUrls({});S.set(KEYS.state,empty);S.set(KEYS.weights,{});S.set(KEYS.logs,[]);S.set(KEYS.videos,{});setShowSettings(false);setShowHist(false)};
@@ -755,16 +756,53 @@ var deload=shouldDeload(logs);
 var sessVol=0;sess.exercises.forEach(function(ex){(exData[ex.id]||[]).forEach(function(s){if(s.completed)sessVol+=(s.weight||0)*(s.reps||0)})});
 
 var copySummary=function(){
-var lines=["=== ABC Workout Session Summary ===","Session: "+sess.label,"Date: "+new Date().toLocaleDateString(),"Duration: "+dur+" min","Readiness: "+readiness.sleep+"/"+readiness.soreness+"/"+readiness.motivation+" (sleep/soreness/motivation)","Session RPE: "+(sessionRPE||"not rated"),"Volume: "+sessVol.toLocaleString()+" lbs total",""];
-sess.exercises.forEach(function(ex){var sets=(exData[ex.id]||[]).filter(function(s){return s.completed});if(!sets.length)return;lines.push(ex.name+":");sets.forEach(function(s,i){lines.push("  Set "+(i+1)+": "+(s.weight?s.weight+"lb":"BW")+" x "+(s.reps||"-")+" reps"+(s.rpe?" @RPE "+s.rpe:""))});var e1=getExE1RM(ex.id,logs);if(e1.length>0)lines.push("  e1RM trend: "+e1.map(function(p){return p.e1rm}).join(" > "));lines.push("")});
-if(sessionPRs.length>0){lines.push("PRs this session:");sessionPRs.forEach(function(p){lines.push("  "+p.exName+": "+p.reasons.join(", "))});lines.push("")}
-if(fatigue)lines.push("Fatigue: "+fatigue.msg);
-if(acwr!==null)lines.push("ACWR: "+acwr+" "+(acwr>1.5?"(HIGH - injury risk)":acwr<0.8?"(LOW - detraining)":"(optimal range)"));
-if(deload)lines.push("DELOAD SUGGESTED: RPE trending up + readiness declining");
-if(notes.notes)lines.push("\nNotes: "+notes.notes);
-var lastTs=S.get(KEYS.analysisTs);if(lastTs)lines.push("\n(Data since last analysis: "+new Date(lastTs).toLocaleDateString()+")");
+var lines=[];
+lines.push("I just finished a workout session in my ABC Cycle training program. Here's the structured data from my session. Please analyze it and give me:");
+lines.push("1. How the session went overall (effort, volume, pacing)");
+lines.push("2. Any exercises where form or load adjustments are needed based on RPE and rep trends");
+lines.push("3. Whether my e1RM trends suggest I'm progressing, plateauing, or regressing on each lift");
+lines.push("4. Any recovery or programming concerns (workload ratio, fatigue patterns, deload need)");
+lines.push("5. Specific recommendations for my next session");
+lines.push("");
+lines.push("---");
+lines.push("");
+lines.push("=== SESSION DATA ===");
+lines.push("Session: "+sess.label);
+lines.push("Date: "+new Date().toLocaleDateString());
+lines.push("Duration: "+dur+" min");
+lines.push("Readiness: sleep="+readiness.sleep+"/3, soreness="+readiness.soreness+"/3, motivation="+readiness.motivation+"/3 (total: "+(readiness.sleep+readiness.soreness+readiness.motivation)+"/9)");
+lines.push("Session RPE: "+(sessionRPE||"not rated")+"/10");
+lines.push("Session Volume: "+sessVol.toLocaleString()+" lbs total tonnage");
+lines.push("");
+lines.push("=== EXERCISES ===");
+sess.exercises.forEach(function(ex){var sets=(exData[ex.id]||[]).filter(function(s){return s.completed});if(!sets.length)return;
+lines.push("");
+lines.push(ex.name+":");
+sets.forEach(function(s,i){
+var e1=calcE1RM(s.weight||0,s.reps||0);
+lines.push("  Set "+(i+1)+": "+(s.weight?s.weight+"lb":"BW")+" x "+(s.reps||"-")+" reps"+(s.rpe?" @RPE "+s.rpe:"")+(e1?" (e1RM: "+e1+")":""))});
+var e1hist=getExE1RM(ex.id,logs);
+if(e1hist.length>0)lines.push("  e1RM history (recent first): "+e1hist.map(function(p){return p.e1rm}).join(", "));
+var prog=getProgression(ex.id,logs,readiness,getTrainingWeek(logs));
+if(prog)lines.push("  Progression status: "+prog.type+" - "+prog.msg)});
+lines.push("");
+lines.push("=== FLAGS ===");
+if(sessionPRs.length>0){lines.push("PRs this session:");sessionPRs.forEach(function(p){lines.push("  "+p.exName+": new "+p.reasons.join(" & ")+" PR")})}else{lines.push("No PRs this session")}
+if(fatigue)lines.push("Fatigue flag: "+fatigue.type+" - "+fatigue.msg);
+if(acwr!==null)lines.push("ACWR (workload ratio): "+acwr+(acwr>1.5?" HIGH SPIKE RISK":acwr<0.8?" LOW/DETRAINING":" (sweet spot 0.8-1.3)"));
+if(deload)lines.push("DELOAD TRIGGERED: RPE trending up across recent sessions + readiness declining");
+var weekV=calcTotalVolume(logs,7);var prevWeekV=calcTotalVolume(logs,14)-weekV;
+if(weekV>0)lines.push("Weekly volume: "+weekV.toLocaleString()+" lbs"+(prevWeekV>0?" (last week: "+prevWeekV.toLocaleString()+" lbs)":""));
+var tWeek=getTrainingWeek(logs);
+if(tWeek>0){var phase=getPeriodPhase(tWeek);lines.push("Training week: "+tWeek+" ("+phase.phase+" phase)")}
+if(notes.notes)lines.push("\nUser notes: "+notes.notes);
+var lastTs=S.get(KEYS.analysisTs);
+if(lastTs)lines.push("\n(Previous analysis export: "+new Date(lastTs).toLocaleDateString()+")");
+lines.push("");
+lines.push("---");
+lines.push("Context: ABC Workout app. 3 rotating sessions (A: squats/push/carry, B: deadlifts/rows/carry, C: squats/pullups/deadlifts) with RPE-gated progression. Dumbbell home training.");
 S.set(KEYS.analysisTs,Date.now());
-navigator.clipboard.writeText(lines.join("\n")).then(function(){}).catch(function(){})};
+navigator.clipboard.writeText(lines.join("\n")).then(function(){setCopied(true);setTimeout(function(){setCopied(false)},2500)}).catch(function(){})};
 
 return e("div",{style:{height:"100%",display:"flex",flexDirection:"column",background:T.bg}},
 e("div",{style:{padding:"calc(14px + env(safe-area-inset-top,0px)) 16px 0",flexShrink:0}},e("button",{onClick:function(){setScreen("workout")},style:{background:T.inp,border:"none",borderRadius:8,color:T.hi,padding:"8px 14px",fontSize:14,cursor:"pointer"}},"\u2190 Back")),
@@ -794,7 +832,7 @@ deload&&e("div",{style:{fontSize:12,color:T.err,fontWeight:600}},"\u{1F6D1} Cons
 e("div",{style:{width:"100%",maxWidth:380,margin:"0 auto",marginBottom:10}},
 e("div",{style:{background:T.card,border:"1px solid "+T.inp,borderRadius:12,overflow:"hidden"}},e("textarea",{value:notes.notes,onChange:function(ev){setNotes({notes:ev.target.value})},placeholder:"Quick notes...",rows:2,style:{width:"100%",background:"transparent",border:"none",color:T.txt,padding:"12px 14px",fontSize:14,resize:"none",outline:"none",lineHeight:1.5}}))),
 // Copy for AI analysis
-e("button",{onClick:copySummary,style:{width:"100%",maxWidth:380,margin:"0 auto 10px",display:"block",padding:"12px",background:"#1a1a2e",border:"1px solid #3B82F644",borderRadius:10,color:"#93C5FD",fontSize:13,fontWeight:500,cursor:"pointer"}},"\u{1F4CB} Copy Session Summary for Analysis")),
+e("button",{onClick:copySummary,style:{width:"100%",maxWidth:380,margin:"0 auto 10px",display:"block",padding:"12px",background:copied?"#052e1c":"#1a1a2e",border:"1px solid "+(copied?T.ok+"66":"#3B82F644"),borderRadius:10,color:copied?T.okL:"#93C5FD",fontSize:13,fontWeight:500,cursor:"pointer",transition:"all 0.3s"}},copied?"\u2705 Copied! Paste into Claude for analysis":"\u{1F4CB} Copy AI Analysis Prompt to Clipboard")),
 e("div",{style:{flexShrink:0,background:T.bg,borderTop:"1px solid "+T.inp,padding:"12px 20px 12px"}},
 e("div",{style:{fontSize:13,color:T.mut,textAlign:"center",marginBottom:10}},"Next: ",e("span",{style:{color:SESSIONS[next]?SESSIONS[next].color:T.mut,fontWeight:600}},SESSIONS[next]?SESSIONS[next].label:"")),
 e("button",{onClick:saveAndFinish,style:{width:"100%",padding:"14px",background:sess.color,border:"none",borderRadius:12,color:"#fff",fontSize:16,fontWeight:600,cursor:"pointer"}},"Save & Done")))
