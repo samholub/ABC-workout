@@ -42,7 +42,7 @@ input[type="range"]{width:100%;accent-color:#F59E0B}
 //   2. Theme Tokens ............. Centralized color palette (T.xxx)
 //   3. Data Layer ............... Sessions, exercises, warmups, progression config
 //   4. Analytics & Metrics ...... e1RM, volume, ACWR, PRs, fatigue, deload
-//   5. Recommendations .......... Progression engine, warmup picker, periodization
+//   5. Recommendations .......... Progression engine, warmup picker, training focus
 //   6. Utilities ................ Audio cue, exercise history
 //   7. PPG / Heart Rate Engine .. Camera-based pulse detection (experimental)
 //   8. UI Components ............ RestTimer, HRMonitor, ExerciseCard, etc.
@@ -121,14 +121,14 @@ function calcVolume(logs,days){var cutoff=Date.now()-days*864e5;var vol={};logs.
 function calcTotalVolume(logs,days){var v=calcVolume(logs,days);var t=0;Object.keys(v).forEach(function(k){t+=v[k]});return t}
 function calcACWR(logs){var acute=calcTotalVolume(logs,7);var chronic=calcTotalVolume(logs,28)/4;if(chronic<1)return null;return Math.round(acute/chronic*100)/100}
 
-function classifyFatigue(exercises,exData){if(!exercises||exercises.length<2)return null;var rpeByPos=[];exercises.forEach(function(ex,i){var sets=exData[ex.id]||[];var rpes=sets.filter(function(s){return s.completed&&s.rpe>0}).map(function(s){return s.rpe});if(rpes.length>0){var avg=rpes.reduce(function(a,v){return a+v},0)/rpes.length;rpeByPos.push({pos:i,avg:avg})}});if(rpeByPos.length<2)return null;var allHigh=rpeByPos.every(function(r){return r.avg>=8});if(allHigh)return{type:"systemic",msg:"High RPE across all exercises \u2014 possible systemic fatigue (sleep, stress, recovery)"};var rising=true;for(var i=1;i<rpeByPos.length;i++){if(rpeByPos[i].avg<=rpeByPos[i-1].avg){rising=false;break}}if(rising&&rpeByPos[rpeByPos.length-1].avg-rpeByPos[0].avg>=1.5)return{type:"endurance",msg:"RPE rising through session \u2014 endurance fatigue, consider shorter rest or fewer sets"};return null}
+function classifyFatigue(exercises,exData){if(!exercises||exercises.length<2)return null;var rpeByPos=[];exercises.forEach(function(ex,i){var sets=exData[ex.id]||[];var rpes=sets.filter(function(s){return s.completed&&s.rpe>0}).map(function(s){return s.rpe});if(rpes.length>0){var avg=rpes.reduce(function(a,v){return a+v},0)/rpes.length;rpeByPos.push({pos:i,avg:avg})}});if(rpeByPos.length<2)return null;var allHigh=rpeByPos.every(function(r){return r.avg>=8});if(allHigh)return{type:"systemic",msg:"All exercises RPE \u22658. Check sleep, stress, and recovery."};var rising=true;for(var i=1;i<rpeByPos.length;i++){if(rpeByPos[i].avg<=rpeByPos[i-1].avg){rising=false;break}}if(rising&&rpeByPos[rpeByPos.length-1].avg-rpeByPos[0].avg>=1.5)return{type:"endurance",msg:"RPE rose \u22651.5 through session. Consider shorter rest or fewer sets."};return null}
 
 function shouldDeload(logs){if(logs.length<6)return false;var recent=logs.slice(0,6);var rpeUp=0,rdDown=0;for(var i=0;i<recent.length-1;i++){var exRPEs=[];if(recent[i].exercises)recent[i].exercises.forEach(function(ex){ex.sets.forEach(function(s){if(s.rpe>0)exRPEs.push(s.rpe)})});var prevRPEs=[];if(recent[i+1].exercises)recent[i+1].exercises.forEach(function(ex){ex.sets.forEach(function(s){if(s.rpe>0)prevRPEs.push(s.rpe)})});if(exRPEs.length>0&&prevRPEs.length>0){var avgC=exRPEs.reduce(function(a,v){return a+v},0)/exRPEs.length;var avgP=prevRPEs.reduce(function(a,v){return a+v},0)/prevRPEs.length;if(avgC>avgP)rpeUp++}if(recent[i].readiness&&recent[i+1].readiness){var rC=recent[i].readiness.sleep+recent[i].readiness.soreness+recent[i].readiness.motivation;var rP=recent[i+1].readiness.sleep+recent[i+1].readiness.soreness+recent[i+1].readiness.motivation;if(rC<rP)rdDown++}}return rpeUp>=3&&rdDown>=2}
 
 
 // ========================================================================
 // 5. RECOMMENDATIONS & DECISION HELPERS
-//    Progression engine, smart warmup, periodization phase, training week
+//    Progression engine, smart warmup, training focus, session count
 // ========================================================================
 
 // These are the key functions that drive workout suggestions.
@@ -137,16 +137,16 @@ function shouldDeload(logs){if(logs.length<6)return false;var recent=logs.slice(
 //
 //   getProgression()   — Should the user increase weight? (RPE-gated, 2-session rule)
 //   getSmartWarmup()   — Which warmup fits readiness + session type?
-//   getPeriodPhase()   — Training phase: foundation / building / pushing / peak
-//   getTrainingWeek()  — Weeks since first logged session
+//   getPeriodPhase()   — Training focus based on session count (not calendar)
+//   getSessionCount()  — Total non-manual sessions logged
 //   getAvgTime()       — Average duration for a session type
 //   getFatigueTrend()  — 3-session lookback for creeping fatigue (soft advisory)
 //   getBalanceAdvisory() — Detect neglected session types in recent history
 
-// Periodization - weeks since first logged session
-function getTrainingWeek(logs){if(!logs.length)return 0;var oldest=logs[logs.length-1];var d=new Date(oldest.date);return Math.floor((Date.now()-d.getTime())/(7*864e5))+1}
-function getPeriodPhase(week){if(week<=2)return{phase:"foundation",msg:"Focus on form, find working weights",clr:"#60A5FA"};if(week<=4)return{phase:"building",msg:"Building consistency",clr:"#A78BFA"};if(week<=8)return{phase:"pushing",msg:"Time to push",clr:"#FBBF24"};return{phase:"peak",msg:"PR territory \u2014 trust the process",clr:"#10B981"}}
-function getProgression(exId,logs,readiness,trainingWeek){
+// Session count and training focus — based on sessions logged, not calendar
+function getSessionCount(logs){var c=0;for(var i=0;i<logs.length;i++){if(!logs[i].manual)c++}return c}
+function getPeriodPhase(sessionCount){if(sessionCount<=8)return{phase:"early",msg:"Establish working weights",clr:"#60A5FA"};if(sessionCount<=20)return{phase:"building",msg:"Build consistency",clr:"#A78BFA"};if(sessionCount<=40)return{phase:"established",msg:"Normal progression",clr:"#FBBF24"};return{phase:"experienced",msg:"Maintain and progress",clr:"#10B981"}}
+function getProgression(exId,logs,readiness,sessionCount){
 var cfg=PROG[exId];if(!cfg||cfg.inc===0)return null;
 var groupIds=getGroupIds(exId);
 var history=[];
@@ -160,20 +160,20 @@ history.push({reps:avgReps,rpe:avgRPE,weight:maxW})}}
 if(history.length<2)return null;
 var h0=history[0],h1=history[1];
 var rdScore=readiness?readiness.sleep+readiness.soreness+readiness.motivation:6;
-if(rdScore<=4)return{type:"maintain",msg:"Low readiness \u2014 maintain load, focus on quality"};
-var phase=getPeriodPhase(trainingWeek||0);
+if(rdScore<=4)return{type:"maintain",msg:"Readiness \u22644/9 \u2014 maintain current load"};
+var phase=getPeriodPhase(sessionCount||0);
 if(cfg.top>0){
 if(h0.reps>=cfg.top&&h1.reps>=cfg.top&&h0.rpe>0&&h1.rpe>0&&h0.rpe<=cfg.rpe&&h1.rpe<=cfg.rpe){
-var msg="Ready to progress \u2192 "+(h0.weight+cfg.inc)+" lbs";
-if(phase.phase==="foundation")msg="Form looks solid \u2192 try "+(h0.weight+cfg.inc)+" lbs";
-if(phase.phase==="peak")msg="\u{1F525} Go for it \u2192 "+(h0.weight+cfg.inc)+" lbs";
+var msg="2 sessions at target reps + RPE \u2192 "+(h0.weight+cfg.inc)+" lbs";
+if(phase.phase==="early")msg="Reps and RPE on track \u2192 try "+(h0.weight+cfg.inc)+" lbs";
+if(phase.phase==="experienced")msg="Progression criteria met \u2192 "+(h0.weight+cfg.inc)+" lbs";
 return{type:"progress",msg:msg,weight:h0.weight+cfg.inc}}
-if(h0.rpe>0&&h0.rpe>=cfg.rpe+1)return{type:"maintain",msg:"Maintain \u2014 RPE still high"};
-if(h0.reps<h1.reps&&h0.weight===h1.weight)return{type:"caution",msg:"Reps trending down \u2014 focus on form"};
+if(h0.rpe>0&&h0.rpe>=cfg.rpe+1)return{type:"maintain",msg:"RPE above target \u2014 hold current load"};
+if(h0.reps<h1.reps&&h0.weight===h1.weight)return{type:"caution",msg:"Reps dropped at same weight \u2014 check form"};
 }else{
 if(h0.rpe>0&&h1.rpe>0&&h0.rpe<=cfg.rpe&&h1.rpe<=cfg.rpe)
-return{type:"progress",msg:"Ready to progress \u2192 "+(h0.weight+cfg.inc)+" lbs",weight:h0.weight+cfg.inc};
-if(h0.rpe>0&&h0.rpe>=cfg.rpe+1)return{type:"maintain",msg:"Maintain \u2014 RPE still high"};
+return{type:"progress",msg:"2 sessions at target RPE \u2192 "+(h0.weight+cfg.inc)+" lbs",weight:h0.weight+cfg.inc};
+if(h0.rpe>0&&h0.rpe>=cfg.rpe+1)return{type:"maintain",msg:"RPE above target \u2014 hold current load"};
 }return null}
 
 function getExHistory(exId,logs){
@@ -185,13 +185,17 @@ var mr=Math.max.apply(null,ex.sets.map(function(s){return s.reps||0}));
 var rpes=ex.sets.filter(function(s){return s.rpe>0});var ar=rpes.length?Math.round(rpes.reduce(function(a,s){return a+s.rpe},0)/rpes.length):0;
 pts.push({date:l.date,weight:mw,reps:mr,rpe:ar})}}return pts.slice(-12)}
 
-function getSmartWarmup(sessionKey,readiness,daysSince){
+function getSmartWarmup(sessionKey,readiness,daysSince,timeAvail){
 var score=readiness?readiness.sleep+readiness.soreness+readiness.motivation:7;
-if(daysSince!==null&&daysSince>3)return "enhanced";
-if(score<=4)return "enhanced";
-if(score<=6){var s=sessionKey;if(s==="A"||s==="C"||s==="bss-c"||s==="sldl-c")return "hip";return "standard"}
-if(score>=8)return "standard";
-return "standard"}
+// Determine readiness-based warmup first
+var wu;
+if(daysSince!==null&&daysSince>3)wu="enhanced";
+else if(score<=4)wu="enhanced";
+else if(score<=6){var s=sessionKey;if(s==="A"||s==="C"||s==="bss-c"||s==="sldl-c")wu="hip";else wu="standard"}
+else wu="standard";
+// Apply time constraint: 15 min caps at standard/emergency
+if(timeAvail&&timeAvail<=15){if(wu==="enhanced"||wu==="hip")wu="standard"}
+return wu}
 
 function getAvgTime(sessionKey,logs){
 var t=0,c=0;logs.forEach(function(l){if(l.session===sessionKey&&l.duration>0){t+=l.duration;c++}});
@@ -218,10 +222,10 @@ var avgRPE=(recent[0].rpe+recent[1].rpe+recent[2].rpe)/3;
 var avgRd=(recent[0].rd+recent[1].rd+recent[2].rd)/3;
 // Pattern A: RPE clearly climbing — monotonic rise, most recent ≥ 8, spread ≥ 1.5
 if(recent[0].rpe>=8&&recent[0].rpe>=recent[1].rpe&&recent[1].rpe>=recent[2].rpe&&recent[0].rpe-recent[2].rpe>=1.5)
-return{msg:"Recent sessions are trending harder \u2014 listen to your body today"};
+return{msg:"RPE rising across last 3 sessions. Avoid pushing progression today."};
 // Pattern B: Sustained high effort + low readiness
 if(avgRPE>=7.5&&avgRd>0&&avgRd<=5)
-return{msg:"High effort with low recovery lately \u2014 consider going lighter today"};
+return{msg:"Avg RPE \u22657.5 with low readiness over last 3 sessions. Consider reducing load today."};
 return null}
 
 // Pattern-balance advisory — detects session-type drift over recent history.
@@ -251,7 +255,8 @@ if(!absent)return null;
 // Don't nag if the cycle engine is already recommending the absent type
 if(rec===absent)return null;
 var label=SESSIONS[absent]?SESSIONS[absent].label:("Session "+absent);
-return{session:absent,msg:"You\u2019ve leaned away from "+label+" lately \u2014 consider it next for balance."}}
+var absentLabel=absent==="C"?"C-family sessions":label;
+return{session:absent,msg:"No "+absentLabel+" in last "+recent.length+" logged sessions. Consider "+label+" next."}}
 
 // ========================================================================
 // 6. UTILITIES
@@ -480,7 +485,7 @@ console.log("HR PPGv2: "+hr+" BPM, beats:"+result.beatCount+", dom:"+result.domB
 
 useEffect(function(){return cleanup},[]);
 
-var hrMsg=bpm<=100?"Fully recovered \u2014 go for it":bpm<=120?"Recovered \u2014 good to go":bpm<=140?"Still elevated \u2014 consider more rest":"Still working hard \u2014 take your time";
+var hrMsg=bpm<=100?"Recovered":bpm<=120?"Recovered \u2014 good to continue":bpm<=140?"Still elevated \u2014 rest longer":"HR still high \u2014 continue resting";
 var hrClr=bpm<=100?"#10B981":bpm<=120?"#6EE7B7":bpm<=140?"#FBBF24":"#EF4444";
 var cqClr=contactQ==="good"?"#10B981":contactQ==="adjusting"?"#FBBF24":contactQ==="weak"?"#F97316":"#78716C";
 var cqMsg=contactQ==="good"?"Good contact \u2014 starting...":contactQ==="adjusting"?"Hold still...":contactQ==="weak"?"Press more firmly...":"Place finger on camera";
@@ -607,7 +612,7 @@ return e("div",{onClick:onToggle,style:{background:allDone?"#1a2e1a":carryAdviso
 // EXPANDED
 var progClr=progression?progression.type==="progress"?"#10B981":progression.type==="maintain"?"#FBBF24":"#F97316":"";
 return e("div",{style:{background:allDone?"#1a2e1a":"#1C1917",border:"1px solid "+(allDone?"#166534":"#44403C"),borderRadius:14,marginBottom:8,overflow:"hidden",transition:"all 0.2s"}},
-e("div",{onClick:onToggle,style:{padding:"14px 16px 8px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer"}},e("div",{style:{flex:1}},e("div",{style:{fontSize:17,fontWeight:700,color:allDone?"#6EE7B7":"#F5F5F4"}},(allDone?"\u2713 ":"")+displayName),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},exercise.sets+" sets x "+exercise.reps+(lastWeight>0?" | Last: "+lastWeight+" lbs":"")),exercise.note&&e("div",{style:{fontSize:12,color:"#78716C",marginTop:3,fontStyle:"italic"}},exercise.note),carryAdvisory&&!allDone&&e("div",{style:{fontSize:11,color:T.warn,marginTop:3}},"Optional today \u2014 skip or lighten if grip is taxed")),e("div",{style:{display:"flex",gap:6,alignItems:"center"}},cues.length>0&&e("button",{onClick:function(ev){ev.stopPropagation();setShowCues(!showCues)},style:{background:showCues?"#292524":"transparent",border:"1px solid "+(showCues?"#57534E":"#44403C"),borderRadius:6,padding:"3px 8px",fontSize:11,color:showCues?"#FBBF24":"#78716C",cursor:"pointer",fontWeight:600}},"Form"),e("div",{style:{background:allDone?"#166534":"#292524",borderRadius:20,padding:"3px 10px",fontSize:12,color:allDone?"#6EE7B7":"#A8A29E",fontWeight:600}},done+"/"+setData.length),e("span",{style:{color:"#57534E",fontSize:12}},"\u25B2"))),
+e("div",{onClick:onToggle,style:{padding:"14px 16px 8px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer"}},e("div",{style:{flex:1}},e("div",{style:{fontSize:17,fontWeight:700,color:allDone?"#6EE7B7":"#F5F5F4"}},(allDone?"\u2713 ":"")+displayName),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},exercise.sets+" sets x "+exercise.reps+(lastWeight>0?" | Last: "+lastWeight+" lbs":"")),exercise.note&&e("div",{style:{fontSize:12,color:"#78716C",marginTop:3,fontStyle:"italic"}},exercise.note),carryAdvisory&&!allDone&&e("div",{style:{fontSize:11,color:T.warn,marginTop:3}},"Second session \u2014 skip or lighten if grip is fatigued")),e("div",{style:{display:"flex",gap:6,alignItems:"center"}},cues.length>0&&e("button",{onClick:function(ev){ev.stopPropagation();setShowCues(!showCues)},style:{background:showCues?"#292524":"transparent",border:"1px solid "+(showCues?"#57534E":"#44403C"),borderRadius:6,padding:"3px 8px",fontSize:11,color:showCues?"#FBBF24":"#78716C",cursor:"pointer",fontWeight:600}},"Form"),e("div",{style:{background:allDone?"#166534":"#292524",borderRadius:20,padding:"3px 10px",fontSize:12,color:allDone?"#6EE7B7":"#A8A29E",fontWeight:600}},done+"/"+setData.length),e("span",{style:{color:"#57534E",fontSize:12}},"\u25B2"))),
 // Progression banner
 progression&&e("div",{style:{margin:"0 16px 8px",padding:"8px 12px",background:progClr+"15",border:"1px solid "+progClr+"44",borderRadius:8}},e("div",{style:{fontSize:13,color:progClr,fontWeight:600}},progression.msg)),
 showCues&&cues.length>0&&e("div",{style:{padding:"0 16px 10px"}},e("div",{style:{background:"#1a1a14",border:"1px solid #3d3d00",borderRadius:8,padding:"10px 12px"}},cues.map(function(c,i){return e("div",{key:i,style:{fontSize:13,color:"#D4D4AA",lineHeight:1.5,marginBottom:i<cues.length-1?6:0,paddingLeft:8,borderLeft:"2px solid #554d00"}},c)}))),
@@ -671,6 +676,7 @@ var _ex=useState(null),expandedLog=_ex[0],setExpandedLog=_ex[1];
 var _ae=useState(null),activeEx=_ae[0],setActiveEx=_ae[1];
 var _wp=useState(null),warmupPeek=_wp[0],setWarmupPeek=_wp[1];
 var _cm=useState(false),circuitMode=_cm[0],setCircuitMode=_cm[1];
+var _ta=useState(25),timeAvail=_ta[0],setTimeAvail=_ta[1];
 var _rd2=useState({sleep:2,soreness:2,motivation:2}),readiness=_rd2[0],setReadiness=_rd2[1];
 var _hr=useState(false),showHR=_hr[0],setShowHR=_hr[1];
 var _ch=useState(null),chartEx=_ch[0],setChartEx=_ch[1];
@@ -687,10 +693,18 @@ useEffect(function(){var today=new Date().toDateString();if(cycleState.lastDate&
 
 var getRec=useCallback(function(){var ls=cycleState.lastSession,ct=cycleState.completedToday;if(cycleState.isDoubleDay&&ct.length>=2)return "modC";if(!ls)return "A";if(ls==="TGU"){var i=CYCLE.indexOf(cycleState.preTgu||"A");return CYCLE[i%3]}if(ls==="modC")return "A";var i=CYCLE.indexOf(ls);return i===-1?"A":CYCLE[(i+1)%3]},[cycleState]);
 
+var getRecReason=function(){var ls=cycleState.lastSession,ct=cycleState.completedToday||[];
+if(cycleState.isDoubleDay&&ct.length>=2)return"Two sessions today \u2192 Modified C";
+if(!ls)return"First session \u2192 starting with A";
+if(ls==="TGU")return"Last was TGU \u2192 resuming cycle";
+if(ls==="modC")return"Last was Modified C \u2192 restarting cycle at A";
+var label=SESSIONS[ls]?SESSIONS[ls].label:ls;
+return"Last completed: "+label};
+
 var startSession=function(key){
 var sess=SESSIONS[key];var init={};
 sess.exercises.forEach(function(ex){init[ex.id]=Array.from({length:ex.sets},function(){return{weight:lastWeights[ex.id]||0,reps:"",rpe:"",completed:false}})});
-setExData(init);setCurrent(key);setStart(Date.now());setNotes({notes:""});setActiveEx(sess.exercises[0].id);setReadiness({sleep:2,soreness:2,motivation:2});setScreen("readiness")
+setExData(init);setCurrent(key);setStart(Date.now());setNotes({notes:""});setActiveEx(sess.exercises[0].id);setReadiness({sleep:2,soreness:2,motivation:2});if(timeAvail<=15)setCircuitMode(true);setScreen("readiness")
 };
 
 var saveAndFinish=function(){
@@ -706,13 +720,14 @@ setCycleState(ns);S.set(KEYS.state,ns);home()
 
 var saveVid=function(exId,url){var u=Object.assign({},videoUrls);u[exId]=url;setVideoUrls(u);S.set(KEYS.videos,u)};
 var changeCarry=function(t){setCarryType(t);S.set(KEYS.carry,t)};
-var home=function(){setScreen("home");setCurrent(null);setWarmup(null);setExData({});setTimer(null);setShowHist(false);setShowLoads(false);setShowAddLog(false);setShowSettings(false);setShowWarmupRef(false);setExpandedLog(null);setActiveEx(null);setWarmupPeek(null);setCircuitMode(false);setShowHR(false);setChartEx(null);setSessionRPE(0);setFloatTimer(null);setSessionPRs([]);setCopied(false)};
+var home=function(){setScreen("home");setCurrent(null);setWarmup(null);setExData({});setTimer(null);setShowHist(false);setShowLoads(false);setShowAddLog(false);setShowSettings(false);setShowWarmupRef(false);setExpandedLog(null);setActiveEx(null);setWarmupPeek(null);setCircuitMode(false);setShowHR(false);setChartEx(null);setSessionRPE(0);setFloatTimer(null);setSessionPRs([]);setCopied(false);setTimeAvail(25)};
 var deleteLog=function(idx){var nl=logs.filter(function(_,i){return i!==idx});setLogs(nl);S.set(KEYS.logs,nl);setConfirmDel(null);setExpandedLog(null)};
 var addManualLog=function(){if(!newLog.date)return;var log={date:new Date(newLog.date+"T12:00:00").toISOString(),session:newLog.session,duration:0,notes:newLog.notes||"Manually logged",exercises:[],manual:true};var nl=[log].concat(logs).sort(function(a,b){return new Date(b.date)-new Date(a.date)}).slice(0,100);setLogs(nl);S.set(KEYS.logs,nl);setShowAddLog(false);setNewLog({session:"A",date:"",notes:""})};
 var clearAll=function(){var empty={lastSession:null,lastDate:null,isDoubleDay:false,completedToday:[]};setCycleState(empty);setLastWeights({});setLogs([]);setVideoUrls({});S.set(KEYS.state,empty);S.set(KEYS.weights,{});S.set(KEYS.logs,[]);S.set(KEYS.videos,{});setShowSettings(false);setShowHist(false)};
 var exNameLookup=function(id){var allEx={};Object.keys(SESSIONS).forEach(function(k){SESSIONS[k].exercises.forEach(function(ex){allEx[ex.id]=ex.name})});return allEx[id]||id};
 
 var rec=getRec();
+var recReason=getRecReason();
 var daysSince=cycleState.lastDate?Math.floor((Date.now()-new Date(cycleState.lastDate).getTime())/86400000):null;
 var acwrVal=calcACWR(logs);
 var deloadWarn=shouldDeload(logs);
@@ -736,22 +751,26 @@ e("button",{onClick:function(){setShowSettings(true)},style:{background:T.inp,bo
 e("div",{style:{flex:1,padding:"0 14px",display:"flex",flexDirection:"column",minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch"}},
 e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}},
 [{l:"Last",v:cycleState.lastSession?(SESSIONS[cycleState.lastSession]?SESSIONS[cycleState.lastSession].label.replace("Session ",""):cycleState.lastSession):"\u2014",s:daysSince!==null?(daysSince===0?"Today":daysSince+"d ago"):""},
-{l:"Next Up",v:rec,s:SESSIONS[rec].time},{l:"This Week",v:weekLogs.length,s:"sessions"}
+{l:"Next Up",v:rec,s:SESSIONS[rec].time},{l:"Last 7 Days",v:weekLogs.length,s:"sessions"}
 ].map(function(c,i){return e("div",{key:i,style:{background:T.card,borderRadius:12,padding:"10px",border:"1px solid "+T.inp}},e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},c.l),e("div",{style:{fontSize:22,fontWeight:700,color:T.hi,marginTop:3,fontFamily:"'JetBrains Mono',monospace"}},c.v),e("div",{style:{fontSize:11,color:T.mut,marginTop:1}},c.s))})),
-// Weekly volume + ACWR
+// 7-day volume + ACWR
 (weekVol>0||acwrVal!==null)&&e("div",{style:{display:"flex",gap:8,marginBottom:8}},
 weekVol>0&&e("div",{style:{flex:1,background:T.card,borderRadius:12,padding:"10px",border:"1px solid "+T.inp}},
-e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},"Week Volume"),
+e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},"7-Day Volume"),
 e("div",{style:{fontSize:16,fontWeight:700,color:T.hi,fontFamily:"'JetBrains Mono',monospace",marginTop:3}},(weekVol/1000).toFixed(1)+"k"),
-prevWeekVol>0&&e("div",{style:{fontSize:11,color:weekVol>prevWeekVol?T.ok:weekVol<prevWeekVol?T.warn:T.mut,marginTop:1}},weekVol>prevWeekVol?"\u2197 vs last wk":weekVol<prevWeekVol?"\u2198 vs last wk":"\u2192 same")),
+prevWeekVol>0&&e("div",{style:{fontSize:11,color:weekVol>prevWeekVol?T.ok:weekVol<prevWeekVol?T.warn:T.mut,marginTop:1}},weekVol>prevWeekVol?"\u2197 vs prior 7d":weekVol<prevWeekVol?"\u2198 vs prior 7d":"\u2192 same")),
 acwrVal!==null&&e("div",{style:{flex:1,background:T.card,borderRadius:12,padding:"10px",border:"1px solid "+(acwrVal>1.5?T.err+"44":T.inp)}},
 e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},"Workload Ratio"),
 e("div",{style:{fontSize:16,fontWeight:700,color:acwrVal>1.5?T.err:acwrVal<0.8?T.warn:T.ok,fontFamily:"'JetBrains Mono',monospace",marginTop:3}},acwrVal),
-e("div",{style:{fontSize:11,color:acwrVal>1.5?T.err:acwrVal<0.8?T.warn:T.ok,marginTop:1}},acwrVal>1.5?"High spike":acwrVal<0.8?"Low volume":"Sweet spot"))),
+e("div",{style:{fontSize:11,color:acwrVal>1.5?T.err:acwrVal<0.8?T.warn:T.ok,marginTop:1}},acwrVal>1.5?"Spike risk":acwrVal<0.8?"Low load":"On track"))),
 // Deload warning
-deloadWarn&&e("div",{style:{background:"#1a0a0a",border:"1px solid "+T.errD+"66",borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:13,color:T.errL,fontWeight:600}},"\u{1F6D1} Deload Suggested"),e("div",{style:{fontSize:12,color:T.sec,marginTop:3}},"RPE trending up + readiness declining over recent sessions. Consider a lighter week.")),
+deloadWarn&&e("div",{style:{background:"#1a0a0a",border:"1px solid "+T.errD+"66",borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:13,color:T.errL,fontWeight:600}},"\u{1F6D1} Reduce Load"),e("div",{style:{fontSize:12,color:T.sec,marginTop:3}},"RPE trending up + readiness declining over recent sessions. Reduce load or volume for the next 1\u20133 sessions.")),
 balanceAdv&&e("div",{style:{background:T.card,border:"1px solid "+T.inp,borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:12,color:T.sec,lineHeight:1.5}},balanceAdv.msg)),
-e("button",{onClick:function(){startSession(rec)},style:{width:"100%",padding:"14px 16px",background:"linear-gradient(135deg,"+SESSIONS[rec].color+"22,"+SESSIONS[rec].color+"11)",border:"2px solid "+SESSIONS[rec].color,borderRadius:16,cursor:"pointer",textAlign:"left",marginBottom:12,flexShrink:0}},e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},e("div",null,e("div",{style:{fontSize:11,color:SESSIONS[rec].color,textTransform:"uppercase",letterSpacing:2,fontWeight:700}},"Recommended"),e("div",{style:{fontSize:22,fontWeight:700,color:"#F5F5F4",marginTop:3}},SESSIONS[rec].label),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},SESSIONS[rec].time+" | "+SESSIONS[rec].exercises.length+" exercises")),e("div",{style:{width:44,height:44,borderRadius:"50%",background:SESSIONS[rec].color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#fff",fontWeight:700}},"\u2192"))),
+// Time available selector
+e("div",{style:{marginBottom:10}},
+e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600,marginBottom:6,paddingLeft:2}},"Time Available"),
+e("div",{style:{display:"flex",gap:6}},[{v:15,l:"10\u201315 min"},{v:25,l:"20\u201325 min"},{v:30,l:"30+ min"}].map(function(opt){var sel=timeAvail===opt.v;return e("button",{key:opt.v,onClick:function(){setTimeAvail(opt.v)},style:{flex:1,padding:"8px 6px",borderRadius:10,fontSize:13,fontWeight:sel?600:400,background:sel?T.inp:"transparent",border:"1px solid "+(sel?T.brdL:T.inp),color:sel?T.hi:T.mut,cursor:"pointer"}},opt.l)}))),
+e("button",{onClick:function(){startSession(rec)},style:{width:"100%",padding:"14px 16px",background:"linear-gradient(135deg,"+SESSIONS[rec].color+"22,"+SESSIONS[rec].color+"11)",border:"2px solid "+SESSIONS[rec].color,borderRadius:16,cursor:"pointer",textAlign:"left",marginBottom:12,flexShrink:0}},e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},e("div",null,e("div",{style:{fontSize:11,color:SESSIONS[rec].color,textTransform:"uppercase",letterSpacing:2,fontWeight:700}},"Recommended"),e("div",{style:{fontSize:22,fontWeight:700,color:"#F5F5F4",marginTop:3}},SESSIONS[rec].label),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},SESSIONS[rec].time+" | "+SESSIONS[rec].exercises.length+" exercises"),e("div",{style:{fontSize:11,color:T.mut,marginTop:3}},recReason),timeAvail<=15&&e("div",{style:{fontSize:11,color:T.warn,marginTop:2}},parseInt(SESSIONS[rec].time)>=20?"Time is tight for "+SESSIONS[rec].label+" \u2014 compressed format recommended":"Format: compressed session \u2014 short warmup recommended"),timeAvail>=30&&e("div",{style:{fontSize:11,color:T.sec,marginTop:2}},"Format: standard session \u2014 full warmup available")),e("div",{style:{width:44,height:44,borderRadius:"50%",background:SESSIONS[rec].color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#fff",fontWeight:700}},"\u2192"))),
 e("div",{style:{display:"flex",flexDirection:"column",minHeight:0}},
 e("div",{style:{fontSize:11,color:"#78716C",textTransform:"uppercase",letterSpacing:2,fontWeight:600,marginBottom:6,paddingLeft:2}},"All Sessions"),
 e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,alignContent:"start"}},
@@ -785,8 +804,8 @@ function renderReadinessCheckIn(){
 var sess=SESSIONS[currentSession];
 var score=readiness.sleep+readiness.soreness+readiness.motivation;
 var scoreClr=score<=4?"#EF4444":score<=6?"#FBBF24":"#10B981";
-var scoreLbl=score<=4?"Take it easy":score<=6?"Solid":score>=8?"Let's go":"Good";
-var tWeek=getTrainingWeek(logs);var period=getPeriodPhase(tWeek);
+var scoreLbl=score<=4?"Low":score<=6?"Moderate":score<=7?"High":"Very High";
+var sesCount=getSessionCount(logs);var period=getPeriodPhase(sesCount);
 var fatigueTrend=getFatigueTrend(logs);
 var opts=[
 {key:"sleep",label:"Sleep Quality",vals:[{v:1,l:"\u{1F62B}",d:"Poor"},{v:2,l:"\u{1F610}",d:"OK"},{v:3,l:"\u{1F60A}",d:"Great"}]},
@@ -807,20 +826,20 @@ e("div",{style:{fontSize:24}},v.l),e("div",{style:{fontSize:12,color:sel?"#F5F5F
 e("div",{style:{textAlign:"center",marginTop:8}},
 e("div",{style:{fontSize:48,fontWeight:700,color:scoreClr,fontFamily:"'JetBrains Mono',monospace"}},score+"/9"),
 e("div",{style:{fontSize:14,color:scoreClr,fontWeight:600}},scoreLbl),
-tWeek>0&&e("div",{style:{marginTop:10,display:"inline-flex",alignItems:"center",gap:6,background:period.clr+"15",border:"1px solid "+period.clr+"33",borderRadius:8,padding:"4px 12px"}},
-e("span",{style:{fontSize:11,color:period.clr,fontWeight:600}},"Week "+tWeek+" \u00b7 "+period.msg)),
+sesCount>0&&e("div",{style:{marginTop:10,display:"inline-flex",alignItems:"center",gap:6,background:period.clr+"15",border:"1px solid "+period.clr+"33",borderRadius:8,padding:"4px 12px"}},
+e("span",{style:{fontSize:11,color:period.clr,fontWeight:600}},sesCount+" sessions \u00b7 "+period.msg)),
 fatigueTrend&&e("div",{style:{marginTop:10,background:"#1a1a0a",border:"1px solid #854d0e44",borderRadius:10,padding:"8px 14px",maxWidth:300,margin:"10px auto 0"}},e("div",{style:{fontSize:12,color:"#FBBF24",lineHeight:1.5}},fatigueTrend.msg)),
-score<=4&&e("div",{style:{marginTop:8,fontSize:13,color:"#A8A29E",fontStyle:"italic"}},"Loads will auto-adjust to maintain today"))),
+score<=4&&e("div",{style:{marginTop:8,fontSize:13,color:"#A8A29E",fontStyle:"italic"}},"Readiness \u22644/9. Progression paused \u2014 maintain loads."))),
 e("div",{style:{flexShrink:0,background:T.bg,borderTop:"1px solid "+T.inp,padding:"12px 14px 12px"}},
 e("div",{style:{display:"flex",gap:8}},
 e("button",{onClick:function(){setScreen("warmup")},style:{flex:1,padding:16,background:T.inp,border:"1px solid "+T.brd,borderRadius:14,color:T.txt,fontSize:14,fontWeight:600,cursor:"pointer"}},"Pick Warm-Up"),
-e("button",{onClick:function(){var sw=getSmartWarmup(currentSession,readiness,daysSince);setWarmup(sw);setScreen("workout")},style:{flex:1,padding:16,background:sess.color,border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}},"Quick Start \u2192"))))
+e("button",{onClick:function(){var sw=getSmartWarmup(currentSession,readiness,daysSince,timeAvail);setWarmup(sw);setScreen("workout")},style:{flex:1,padding:16,background:sess.color,border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}},"Quick Start \u2192"))))
 }
 
 // ── Screen: Warmup Selection ──
 function renderWarmupSelection(){
 var sess=SESSIONS[currentSession];
-var smartWU=getSmartWarmup(currentSession,readiness,daysSince);
+var smartWU=getSmartWarmup(currentSession,readiness,daysSince,timeAvail);
 return e("div",{style:{height:"100%",display:"flex",flexDirection:"column",background:"#0C0A09"}},
 e("div",{style:{padding:"calc(14px + env(safe-area-inset-top,0px)) 16px 10px",flexShrink:0}},
 e("button",{onClick:function(){setScreen("readiness")},style:{background:"#292524",border:"none",borderRadius:8,color:"#F5F5F4",padding:"8px 14px",fontSize:14,cursor:"pointer",marginBottom:10}},"\u2190 Back"),
@@ -830,6 +849,7 @@ e("div",{style:{flex:1,padding:"0 14px",display:"flex",flexDirection:"column",mi
 e("div",{style:{display:"flex",gap:6,marginBottom:10}},
 e("button",{onClick:function(){setCircuitMode(false)},style:{flex:1,padding:"10px 10px",borderRadius:10,cursor:"pointer",background:!circuitMode?"#292524":"transparent",border:"1px solid "+(!circuitMode?"#57534E":"#292524"),textAlign:"left"}},e("div",{style:{fontSize:13,fontWeight:!circuitMode?600:400,color:!circuitMode?"#F5F5F4":"#78716C"}},"Standard"),e("div",{style:{fontSize:11,color:"#78716C",marginTop:2}},"All sets per exercise, then next")),
 e("button",{onClick:function(){setCircuitMode(true)},style:{flex:1,padding:"10px 10px",borderRadius:10,cursor:"pointer",background:circuitMode?"#292524":"transparent",border:"1px solid "+(circuitMode?"#57534E":"#292524"),textAlign:"left"}},e("div",{style:{fontSize:13,fontWeight:circuitMode?600:400,color:circuitMode?"#F5F5F4":"#78716C"}},"Circuit"),e("div",{style:{fontSize:11,color:"#78716C",marginTop:2}},"Rotate exercises each set"))),
+timeAvail<=15&&circuitMode&&e("div",{style:{fontSize:11,color:T.mut,marginBottom:6,paddingLeft:2}},"Circuit pre-selected for compressed format. Tap Standard to change."),
 e("div",{style:{flex:1}},WARMUPS.map(function(w){var isPeeking=warmupPeek===w.id;var isRec=w.id===smartWU;
 return e("div",{key:w.id,style:{background:"#1C1917",border:"1px solid "+(isRec?"#F59E0B44":isPeeking?"#44403C":"#292524"),borderRadius:14,marginBottom:8,overflow:"hidden"}},
 e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px"}},
@@ -867,11 +887,11 @@ floatTimer&&e(RestTimer,{duration:restDur,floating:true,onDone:function(){setFlo
 if(circuitMode){var sess2=SESSIONS[currentSession];var curIdx=sess2.exercises.findIndex(function(x){return x.id===floatTimer.exId});
 var nextEx=null;for(var ci=1;ci<=sess2.exercises.length;ci++){var ni=(curIdx+ci)%sess2.exercises.length;var nid=sess2.exercises[ni].id;var nsets=exData[nid]||[];if(!nsets.every(function(s){return s.completed})){nextEx=nid;break}}
 if(nextEx)setTimeout(function(){setActiveEx(nextEx)},200)}},onHR:function(){setShowHR(true)}}),
-carryWarn&&e("div",{style:{background:"#1a1a0a",border:"1px solid #854d0e44",borderRadius:10,padding:"8px 14px",marginBottom:10}},e("div",{style:{fontSize:12,color:"#FBBF24",lineHeight:1.5}},"Second session today \u2014 consider skipping or lightening carries if grip feels taxed.")),
+carryWarn&&e("div",{style:{background:"#1a1a0a",border:"1px solid #854d0e44",borderRadius:10,padding:"8px 14px",marginBottom:10}},e("div",{style:{fontSize:12,color:"#FBBF24",lineHeight:1.5}},"Second session today. Consider skipping or lightening carries to manage grip fatigue.")),
 sess.exercises.map(function(ex){
 var exSets=exData[ex.id]||[];
 var isActive=activeEx===ex.id;
-var prog=getProgression(ex.id,logs,readiness,getTrainingWeek(logs));
+var prog=getProgression(ex.id,logs,readiness,getSessionCount(logs));
 var ghost=getGhostSets(ex.id,logs);
 var prList=detectPRs(ex.id,exSets,logs);
 var e1rm=getExE1RM(ex.id,logs);
@@ -938,18 +958,18 @@ var e1=calcE1RM(s.weight||0,s.reps||0);
 lines.push("  Set "+(i+1)+": "+(s.weight?s.weight+"lb":"BW")+" x "+(s.reps||"-")+" reps"+(s.rpe?" @RPE "+s.rpe:"")+(e1?" (e1RM: "+e1+")":""))});
 var e1hist=getExE1RM(ex.id,logs);
 if(e1hist.length>0)lines.push("  e1RM history (recent first): "+e1hist.map(function(p){return p.e1rm}).join(", "));
-var prog=getProgression(ex.id,logs,readiness,getTrainingWeek(logs));
+var prog=getProgression(ex.id,logs,readiness,getSessionCount(logs));
 if(prog)lines.push("  Progression status: "+prog.type+" - "+prog.msg)});
 lines.push("");
 lines.push("=== FLAGS ===");
 if(sessionPRs.length>0){lines.push("PRs this session:");sessionPRs.forEach(function(p){lines.push("  "+p.exName+": new "+p.reasons.join(" & ")+" PR")})}else{lines.push("No PRs this session")}
 if(fatigue)lines.push("Fatigue flag: "+fatigue.type+" - "+fatigue.msg);
-if(acwr!==null)lines.push("ACWR (workload ratio): "+acwr+(acwr>1.5?" HIGH SPIKE RISK":acwr<0.8?" LOW/DETRAINING":" (sweet spot 0.8-1.3)"));
-if(deload)lines.push("DELOAD TRIGGERED: RPE trending up across recent sessions + readiness declining");
+if(acwr!==null)lines.push("ACWR (workload ratio): "+acwr+(acwr>1.5?" HIGH SPIKE RISK":acwr<0.8?" LOW/DETRAINING":" (optimal range 0.8-1.3)"));
+if(deload)lines.push("DELOAD FLAG: RPE trending up + readiness declining. Reduce load or volume next 1-3 sessions.");
 var weekV=calcTotalVolume(logs,7);var prevWeekV=calcTotalVolume(logs,14)-weekV;
-if(weekV>0)lines.push("Weekly volume: "+weekV.toLocaleString()+" lbs"+(prevWeekV>0?" (last week: "+prevWeekV.toLocaleString()+" lbs)":""));
-var tWeek=getTrainingWeek(logs);
-if(tWeek>0){var phase=getPeriodPhase(tWeek);lines.push("Training week: "+tWeek+" ("+phase.phase+" phase)")}
+if(weekV>0)lines.push("7-day volume: "+weekV.toLocaleString()+" lbs"+(prevWeekV>0?" (prior 7 days: "+prevWeekV.toLocaleString()+" lbs)":""));
+var sesCount=getSessionCount(logs);
+if(sesCount>0){var phase=getPeriodPhase(sesCount);lines.push("Sessions logged: "+sesCount+" ("+phase.msg+")")}
 if(notes.notes)lines.push("\nUser notes: "+notes.notes);
 var lastTs=S.get(KEYS.analysisTs);
 if(lastTs)lines.push("\n(Previous analysis export: "+new Date(lastTs).toLocaleDateString()+")");
@@ -981,8 +1001,8 @@ e("div",{style:{display:"flex",gap:4}},
 (fatigue||acwr!==null||deload)&&e("div",{style:{background:T.card,borderRadius:12,padding:"12px 14px",marginBottom:10,border:"1px solid "+T.inp}},
 e("div",{style:{fontSize:13,color:T.mut,fontWeight:600,marginBottom:6}},"Session Insights"),
 fatigue&&e("div",{style:{fontSize:12,color:fatigue.type==="systemic"?T.err:"#F97316",marginBottom:4}},fatigue.msg),
-acwr!==null&&e("div",{style:{fontSize:12,color:acwr>1.5?T.err:acwr<0.8?T.warn:T.ok,marginBottom:4}},"Workload ratio: "+acwr+(acwr>1.5?" \u26a0 High spike risk":acwr<0.8?" \u2193 Volume dropping":"")),
-deload&&e("div",{style:{fontSize:12,color:T.err,fontWeight:600}},"\u{1F6D1} Consider a deload week \u2014 RPE trending up while readiness declining")),
+acwr!==null&&e("div",{style:{fontSize:12,color:acwr>1.5?T.err:acwr<0.8?T.warn:T.ok,marginBottom:4}},"Workload ratio: "+acwr+(acwr>1.5?" \u26a0 Load spike \u2014 injury risk":acwr<0.8?" \u2193 Load declining":"")),
+deload&&e("div",{style:{fontSize:12,color:T.err,fontWeight:600}},"\u{1F6D1} Fatigue looks elevated \u2014 reduce load or volume for the next 1\u20133 sessions")),
 // Notes
 e("div",{style:{width:"100%",maxWidth:380,margin:"0 auto",marginBottom:10}},
 e("div",{style:{background:T.card,border:"1px solid "+T.inp,borderRadius:12,overflow:"hidden"}},e("textarea",{value:notes.notes,onChange:function(ev){setNotes({notes:ev.target.value})},placeholder:"Quick notes...",rows:2,style:{width:"100%",background:"transparent",border:"none",color:T.txt,padding:"12px 14px",fontSize:14,resize:"none",outline:"none",lineHeight:1.5}}))),
