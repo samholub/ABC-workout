@@ -136,6 +136,7 @@ function shouldDeload(logs){if(logs.length<6)return false;var recent=logs.slice(
 // edit the functions in this section.
 //
 //   getProgression()   — Should the user increase weight? (RPE-gated, 2-session rule)
+//   getSuggestedLoad() — What weight to start with today (uses progression + readiness + context)
 //   getSmartWarmup()   — Which warmup fits readiness + session type?
 //   getPeriodPhase()   — Training focus based on session count (not calendar)
 //   getSessionCount()  — Total non-manual sessions logged
@@ -175,6 +176,23 @@ if(h0.rpe>0&&h1.rpe>0&&h0.rpe<=cfg.rpe&&h1.rpe<=cfg.rpe)
 return{type:"progress",msg:"2 sessions at target RPE \u2192 "+(h0.weight+cfg.inc)+" lbs",weight:h0.weight+cfg.inc};
 if(h0.rpe>0&&h0.rpe>=cfg.rpe+1)return{type:"maintain",msg:"RPE above target \u2014 hold current load"};
 }return null}
+
+// Per-exercise suggested starting load — answers "what weight do I pick up?"
+// Returns { weight, reason } or null (for bodyweight exercises / no history).
+function getSuggestedLoad(exId,logs,readiness,sessionCount,carryAdvisory){
+var cfg=PROG[exId];
+if(!cfg||cfg.inc===0)return null;
+// Find last used weight from history
+var gids=getGroupIds(exId);var lastW=0;
+for(var i=0;i<logs.length;i++){var l=logs[i];if(!l.exercises)continue;
+var ex=l.exercises.find(function(x){return gids.indexOf(x.id)!==-1&&x.sets&&x.sets.length>0});
+if(ex){var w=Math.max.apply(null,ex.sets.map(function(s){return s.weight||0}));if(w>0){lastW=w;break}}}
+if(!lastW)return null;
+var prog=getProgression(exId,logs,readiness,sessionCount);
+if(prog&&prog.type==="progress")return{weight:prog.weight,reason:prog.msg};
+if(carryAdvisory)return{weight:lastW,reason:"Second session \u2014 maintain or lighten"};
+if(prog)return{weight:lastW,reason:prog.msg};
+return{weight:lastW,reason:null}}
 
 function getExHistory(exId,logs){
 var groupIds=getGroupIds(exId);
@@ -583,7 +601,7 @@ return e("span",{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:12,colo
 
 // ── ExerciseCard ──
 function ExerciseCard(props){
-var exercise=props.exercise,setData=props.setData,onUpdate=props.onUpdate,lastWeight=props.lastWeight,showTimer=props.showTimer,onTimerDone=props.onTimerDone,restDuration=props.restDuration,carryType=props.carryType,onCarryTypeChange=props.onCarryTypeChange,videoUrls=props.videoUrls,onVideoSave=props.onVideoSave,isExpanded=props.isExpanded,onToggle=props.onToggle,progression=props.progression,onHR=props.onHR,ghostSets=props.ghostSets,prs=props.prs,e1rmData=props.e1rmData,carryAdvisory=props.carryAdvisory;
+var exercise=props.exercise,setData=props.setData,onUpdate=props.onUpdate,lastWeight=props.lastWeight,showTimer=props.showTimer,onTimerDone=props.onTimerDone,restDuration=props.restDuration,carryType=props.carryType,onCarryTypeChange=props.onCarryTypeChange,videoUrls=props.videoUrls,onVideoSave=props.onVideoSave,isExpanded=props.isExpanded,onToggle=props.onToggle,progression=props.progression,onHR=props.onHR,ghostSets=props.ghostSets,prs=props.prs,e1rmData=props.e1rmData,carryAdvisory=props.carryAdvisory,suggestedLoad=props.suggestedLoad;
 var _c=useState(false),showCues=_c[0],setShowCues=_c[1];
 var _v=useState(false),editVid=_v[0],setEditVid=_v[1];
 var _vi=useState(""),vidInput=_vi[0],setVidInput=_vi[1];
@@ -607,14 +625,15 @@ var ghostStr="";if(ghostSets&&ghostSets.length>0){var gs=ghostSets[0];ghostStr=(
 var hasPR=prs&&prs.length>0;
 if(!isExpanded){
 var progReady=progression&&progression.type==="progress";
-return e("div",{onClick:onToggle,style:{background:allDone?"#1a2e1a":carryAdvisory?T.card+"ee":T.card,border:"1px solid "+(allDone?T.okD:hasPR?"#854d0e":progReady?T.ok+"44":carryAdvisory?T.brd+"88":T.inp),borderRadius:14,marginBottom:8,padding:"14px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all 0.2s"}},e("div",{style:{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}},e("div",{style:{width:28,height:28,borderRadius:"50%",background:allDone?T.okD:T.inp,border:"2px solid "+(allDone?T.okBr:T.brd),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:allDone?T.okL:T.mut,flexShrink:0}},allDone?"\u2713":done>0?done:""),e("div",{style:{minWidth:0,flex:1}},e("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},e("span",{style:{fontSize:15,fontWeight:600,color:allDone?T.okL:carryAdvisory?T.sec:T.hi}},displayName),progReady&&e("span",{style:{fontSize:9,color:T.ok,background:T.ok+"22",borderRadius:4,padding:"2px 6px",fontWeight:700,letterSpacing:0.5}},"\u2B06 READY"),hasPR&&e("span",{style:{fontSize:9,color:"#EAB308",background:"#854d0e44",borderRadius:4,padding:"2px 6px",fontWeight:700}},"\u{1F3C6} PR!"),carryAdvisory&&!allDone&&e("span",{style:{fontSize:9,color:T.mut,background:T.inp,borderRadius:4,padding:"2px 6px",fontWeight:600}},"OPTIONAL")),e("div",{style:{fontSize:12,color:T.mut,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}},e("span",null,done+"/"+setData.length+" sets"),weightSummary&&e("span",null," \u00b7 "+weightSummary),curE1RM>0&&e("span",null," \u00b7 e1RM: "+curE1RM),trendArrow&&e("span",{style:{color:trendClr,fontWeight:700}},trendArrow)),ghostStr&&!allDone&&e("div",{style:{fontSize:11,color:T.brdL,fontStyle:"italic",marginTop:1}},"Last: "+ghostStr))),e("span",{style:{color:T.brdL,fontSize:12,flexShrink:0}},"\u25BC"))
+return e("div",{onClick:onToggle,style:{background:allDone?"#1a2e1a":carryAdvisory?T.card+"ee":T.card,border:"1px solid "+(allDone?T.okD:hasPR?"#854d0e":progReady?T.ok+"44":carryAdvisory?T.brd+"88":T.inp),borderRadius:14,marginBottom:8,padding:"14px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all 0.2s"}},e("div",{style:{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}},e("div",{style:{width:28,height:28,borderRadius:"50%",background:allDone?T.okD:T.inp,border:"2px solid "+(allDone?T.okBr:T.brd),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:allDone?T.okL:T.mut,flexShrink:0}},allDone?"\u2713":done>0?done:""),e("div",{style:{minWidth:0,flex:1}},e("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},e("span",{style:{fontSize:15,fontWeight:600,color:allDone?T.okL:carryAdvisory?T.sec:T.hi}},displayName),progReady&&e("span",{style:{fontSize:9,color:T.ok,background:T.ok+"22",borderRadius:4,padding:"2px 6px",fontWeight:700,letterSpacing:0.5}},"\u2B06 READY"),hasPR&&e("span",{style:{fontSize:9,color:"#EAB308",background:"#854d0e44",borderRadius:4,padding:"2px 6px",fontWeight:700}},"\u{1F3C6} PR!"),carryAdvisory&&!allDone&&e("span",{style:{fontSize:9,color:T.mut,background:T.inp,borderRadius:4,padding:"2px 6px",fontWeight:600}},"OPTIONAL")),e("div",{style:{fontSize:12,color:T.mut,display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}},e("span",null,done+"/"+setData.length+" sets"),weightSummary&&e("span",null," \u00b7 "+weightSummary),curE1RM>0&&e("span",null," \u00b7 e1RM: "+curE1RM),trendArrow&&e("span",{style:{color:trendClr,fontWeight:700}},trendArrow)),suggestedLoad&&!allDone&&e("div",{style:{fontSize:11,color:suggestedLoad.weight>lastWeight?T.ok:T.acc,fontFamily:"'JetBrains Mono',monospace",marginTop:1}},"Start: "+suggestedLoad.weight+" lbs"),!suggestedLoad&&ghostStr&&!allDone&&e("div",{style:{fontSize:11,color:T.brdL,fontStyle:"italic",marginTop:1}},"Last: "+ghostStr))),e("span",{style:{color:T.brdL,fontSize:12,flexShrink:0}},"\u25BC"))
 }
 // EXPANDED
 var progClr=progression?progression.type==="progress"?"#10B981":progression.type==="maintain"?"#FBBF24":"#F97316":"";
 return e("div",{style:{background:allDone?"#1a2e1a":"#1C1917",border:"1px solid "+(allDone?"#166534":"#44403C"),borderRadius:14,marginBottom:8,overflow:"hidden",transition:"all 0.2s"}},
-e("div",{onClick:onToggle,style:{padding:"14px 16px 8px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer"}},e("div",{style:{flex:1}},e("div",{style:{fontSize:17,fontWeight:700,color:allDone?"#6EE7B7":"#F5F5F4"}},(allDone?"\u2713 ":"")+displayName),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},exercise.sets+" sets x "+exercise.reps+(lastWeight>0?" | Last: "+lastWeight+" lbs":"")),exercise.note&&e("div",{style:{fontSize:12,color:"#78716C",marginTop:3,fontStyle:"italic"}},exercise.note),carryAdvisory&&!allDone&&e("div",{style:{fontSize:11,color:T.warn,marginTop:3}},"Second session \u2014 skip or lighten if grip is fatigued")),e("div",{style:{display:"flex",gap:6,alignItems:"center"}},cues.length>0&&e("button",{onClick:function(ev){ev.stopPropagation();setShowCues(!showCues)},style:{background:showCues?"#292524":"transparent",border:"1px solid "+(showCues?"#57534E":"#44403C"),borderRadius:6,padding:"3px 8px",fontSize:11,color:showCues?"#FBBF24":"#78716C",cursor:"pointer",fontWeight:600}},"Form"),e("div",{style:{background:allDone?"#166534":"#292524",borderRadius:20,padding:"3px 10px",fontSize:12,color:allDone?"#6EE7B7":"#A8A29E",fontWeight:600}},done+"/"+setData.length),e("span",{style:{color:"#57534E",fontSize:12}},"\u25B2"))),
+e("div",{onClick:onToggle,style:{padding:"14px 16px 8px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",cursor:"pointer"}},e("div",{style:{flex:1}},e("div",{style:{fontSize:17,fontWeight:700,color:allDone?"#6EE7B7":"#F5F5F4"}},(allDone?"\u2713 ":"")+displayName),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},exercise.sets+" sets x "+exercise.reps+(suggestedLoad&&!allDone?" | Start: "+suggestedLoad.weight+" lbs":lastWeight>0?" | Last: "+lastWeight+" lbs":"")),exercise.note&&e("div",{style:{fontSize:12,color:"#78716C",marginTop:3,fontStyle:"italic"}},exercise.note),carryAdvisory&&!allDone&&e("div",{style:{fontSize:11,color:T.warn,marginTop:3}},"Second session \u2014 skip or lighten if grip is fatigued")),e("div",{style:{display:"flex",gap:6,alignItems:"center"}},cues.length>0&&e("button",{onClick:function(ev){ev.stopPropagation();setShowCues(!showCues)},style:{background:showCues?"#292524":"transparent",border:"1px solid "+(showCues?"#57534E":"#44403C"),borderRadius:6,padding:"3px 8px",fontSize:11,color:showCues?"#FBBF24":"#78716C",cursor:"pointer",fontWeight:600}},"Form"),e("div",{style:{background:allDone?"#166534":"#292524",borderRadius:20,padding:"3px 10px",fontSize:12,color:allDone?"#6EE7B7":"#A8A29E",fontWeight:600}},done+"/"+setData.length),e("span",{style:{color:"#57534E",fontSize:12}},"\u25B2"))),
 // Progression banner
 progression&&e("div",{style:{margin:"0 16px 8px",padding:"8px 12px",background:progClr+"15",border:"1px solid "+progClr+"44",borderRadius:8}},e("div",{style:{fontSize:13,color:progClr,fontWeight:600}},progression.msg)),
+!progression&&suggestedLoad&&suggestedLoad.reason&&e("div",{style:{margin:"0 16px 8px",padding:"8px 12px",background:T.inp,border:"1px solid "+T.brd,borderRadius:8}},e("div",{style:{fontSize:12,color:T.sec}},suggestedLoad.reason)),
 showCues&&cues.length>0&&e("div",{style:{padding:"0 16px 10px"}},e("div",{style:{background:"#1a1a14",border:"1px solid #3d3d00",borderRadius:8,padding:"10px 12px"}},cues.map(function(c,i){return e("div",{key:i,style:{fontSize:13,color:"#D4D4AA",lineHeight:1.5,marginBottom:i<cues.length-1?6:0,paddingLeft:8,borderLeft:"2px solid #554d00"}},c)}))),
 exercise.isCarry&&e("div",{style:{padding:"0 16px 8px",display:"flex",gap:6}},Object.keys(CARRY_TYPES).map(function(k){var v=CARRY_TYPES[k];return e("button",{key:k,onClick:function(){onCarryTypeChange(k)},style:{flex:1,padding:"6px 8px",borderRadius:8,fontSize:12,cursor:"pointer",fontWeight:carryType===k?600:400,background:carryType===k?"#292524":"transparent",border:"1px solid "+(carryType===k?"#57534E":"#333"),color:carryType===k?"#F5F5F4":"#78716C"}},v.label,e("span",{style:{display:"block",fontSize:10,fontWeight:400,color:"#78716C",marginTop:1}},v.desc))})),
 vidId&&e("div",{style:{padding:"0 16px 8px"}},e("div",{style:{position:"relative",paddingBottom:"56.25%",borderRadius:8,overflow:"hidden",background:"#0C0A09"}},e("iframe",{src:"https://www.youtube.com/embed/"+vidId,style:{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"},allow:"accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture",allowFullScreen:true})),e("button",{onClick:function(){setEditVid(true);setVidInput(videoUrl)},style:{marginTop:4,background:"transparent",border:"none",color:"#57534E",fontSize:11,cursor:"pointer"}},"Change video")),
@@ -895,9 +914,10 @@ var prog=getProgression(ex.id,logs,readiness,getSessionCount(logs));
 var ghost=getGhostSets(ex.id,logs);
 var prList=detectPRs(ex.id,exSets,logs);
 var e1rm=getExE1RM(ex.id,logs);
+var sugLoad=getSuggestedLoad(ex.id,logs,readiness,getSessionCount(logs),carryWarn&&ex.isCarry);
 return e(ExerciseCard,{key:ex.id,exercise:ex,setData:exSets,lastWeight:lastWeights[ex.id]||0,
 showTimer:timer,restDuration:restDur,progression:prog,floatingTimer:!!floatTimer,
-ghostSets:ghost,prs:prList,e1rmData:e1rm,carryAdvisory:carryWarn&&ex.isCarry,
+ghostSets:ghost,prs:prList,e1rmData:e1rm,carryAdvisory:carryWarn&&ex.isCarry,suggestedLoad:sugLoad,
 onHR:function(){setShowHR(true)},
 onTimerDone:function(){setTimer(null);setFloatTimer(null);
 if(circuitMode){var curIdx=sess.exercises.findIndex(function(x){return x.id===ex.id});
