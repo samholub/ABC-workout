@@ -141,6 +141,7 @@ function shouldDeload(logs){if(logs.length<6)return false;var recent=logs.slice(
 //   getTrainingWeek()  — Weeks since first logged session
 //   getAvgTime()       — Average duration for a session type
 //   getFatigueTrend()  — 3-session lookback for creeping fatigue (soft advisory)
+//   getBalanceAdvisory() — Detect neglected session types in recent history
 
 // Periodization - weeks since first logged session
 function getTrainingWeek(logs){if(!logs.length)return 0;var oldest=logs[logs.length-1];var d=new Date(oldest.date);return Math.floor((Date.now()-d.getTime())/(7*864e5))+1}
@@ -222,6 +223,35 @@ return{msg:"Recent sessions are trending harder \u2014 listen to your body today
 if(avgRPE>=7.5&&avgRd>0&&avgRd<=5)
 return{msg:"High effort with low recovery lately \u2014 consider going lighter today"};
 return null}
+
+// Pattern-balance advisory — detects session-type drift over recent history.
+// Looks at the last 9 non-TGU, non-manual sessions. If any core type (A, B, C)
+// is completely absent, surfaces one calm recommendation for the most neglected.
+// modC counts toward C-family (both include vertical pulling).
+function getBalanceAdvisory(logs,rec){
+var recent=[];
+for(var i=0;i<logs.length&&recent.length<9;i++){
+var l=logs[i];if(l.manual)continue;
+var s=l.session;if(s==="TGU")continue;
+recent.push(s)}
+if(recent.length<6)return null;
+// Count core types — modC counts as C-family
+var counts={A:0,B:0,C:0};
+for(var i=0;i<recent.length;i++){
+var s=recent[i];
+if(s==="A")counts.A++;
+else if(s==="B")counts.B++;
+else if(s==="C"||s==="modC")counts.C++}
+// Find any absent type
+var absent=null;
+if(counts.A===0)absent="A";
+else if(counts.B===0)absent="B";
+else if(counts.C===0)absent="C";
+if(!absent)return null;
+// Don't nag if the cycle engine is already recommending the absent type
+if(rec===absent)return null;
+var label=SESSIONS[absent]?SESSIONS[absent].label:("Session "+absent);
+return{session:absent,msg:"You\u2019ve leaned away from "+label+" lately \u2014 consider it next for balance."}}
 
 // ========================================================================
 // 6. UTILITIES
@@ -698,6 +728,7 @@ var prevWeekVol=calcTotalVolume(logs,14)-weekVol;
 function renderHome(){
 var todayN=(cycleState.completedToday||[]).length;
 var weekLogs=logs.filter(function(l){return new Date(l.date)>=new Date(Date.now()-7*864e5)});
+var balanceAdv=getBalanceAdvisory(logs,rec);
 return e("div",{style:{height:"100%",display:"flex",flexDirection:"column",background:"#0C0A09"}},
 e("div",{style:{padding:"calc(14px + env(safe-area-inset-top,0px)) 16px 10px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexShrink:0}},
 e("div",null,e("div",{style:{fontSize:12,color:T.mut,textTransform:"uppercase",letterSpacing:2.5,fontWeight:600}},"ABC Cycle Tracker",e("span",{style:{fontSize:9,color:T.brdL,marginLeft:6,letterSpacing:1,textTransform:"none"}},"v19")),e("div",{style:{fontSize:26,fontWeight:700,color:T.hi,marginTop:3}},todayN>0?todayN+" session"+(todayN>1?"s":"")+" today":"Ready to train")),
@@ -719,6 +750,7 @@ e("div",{style:{fontSize:16,fontWeight:700,color:acwrVal>1.5?T.err:acwrVal<0.8?T
 e("div",{style:{fontSize:11,color:acwrVal>1.5?T.err:acwrVal<0.8?T.warn:T.ok,marginTop:1}},acwrVal>1.5?"High spike":acwrVal<0.8?"Low volume":"Sweet spot"))),
 // Deload warning
 deloadWarn&&e("div",{style:{background:"#1a0a0a",border:"1px solid "+T.errD+"66",borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:13,color:T.errL,fontWeight:600}},"\u{1F6D1} Deload Suggested"),e("div",{style:{fontSize:12,color:T.sec,marginTop:3}},"RPE trending up + readiness declining over recent sessions. Consider a lighter week.")),
+balanceAdv&&e("div",{style:{background:T.card,border:"1px solid "+T.inp,borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:12,color:T.sec,lineHeight:1.5}},balanceAdv.msg)),
 e("button",{onClick:function(){startSession(rec)},style:{width:"100%",padding:"14px 16px",background:"linear-gradient(135deg,"+SESSIONS[rec].color+"22,"+SESSIONS[rec].color+"11)",border:"2px solid "+SESSIONS[rec].color,borderRadius:16,cursor:"pointer",textAlign:"left",marginBottom:12,flexShrink:0}},e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},e("div",null,e("div",{style:{fontSize:11,color:SESSIONS[rec].color,textTransform:"uppercase",letterSpacing:2,fontWeight:700}},"Recommended"),e("div",{style:{fontSize:22,fontWeight:700,color:"#F5F5F4",marginTop:3}},SESSIONS[rec].label),e("div",{style:{fontSize:13,color:"#A8A29E",marginTop:2}},SESSIONS[rec].time+" | "+SESSIONS[rec].exercises.length+" exercises")),e("div",{style:{width:44,height:44,borderRadius:"50%",background:SESSIONS[rec].color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,color:"#fff",fontWeight:700}},"\u2192"))),
 e("div",{style:{display:"flex",flexDirection:"column",minHeight:0}},
 e("div",{style:{fontSize:11,color:"#78716C",textTransform:"uppercase",letterSpacing:2,fontWeight:600,marginBottom:6,paddingLeft:2}},"All Sessions"),
