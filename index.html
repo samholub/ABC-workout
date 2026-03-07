@@ -684,6 +684,7 @@ var _tm=useState(null),timer=_tm[0],setTimer=_tm[1];
 var _rd=useState(function(){return S.get(KEYS.rest)||90}),restDur=_rd[0],setRestDurState=_rd[1];
 var _st=useState(null),start=_st[0],setStart=_st[1];
 var _sh=useState(false),showHist=_sh[0],setShowHist=_sh[1];
+var _si=useState(true),showInsights=_si[0],setShowInsights=_si[1];
 var _sl=useState(false),showLoads=_sl[0],setShowLoads=_sl[1];
 var _ss=useState(false),showSettings=_ss[0],setShowSettings=_ss[1];
 var _nt=useState({notes:""}),notes=_nt[0],setNotes=_nt[1];
@@ -772,7 +773,10 @@ e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBot
 [{l:"Last",v:cycleState.lastSession?(SESSIONS[cycleState.lastSession]?SESSIONS[cycleState.lastSession].label.replace("Session ",""):cycleState.lastSession):"\u2014",s:daysSince!==null?(daysSince===0?"Today":daysSince+"d ago"):""},
 {l:"Next Up",v:rec,s:SESSIONS[rec].time},{l:"Last 7 Days",v:weekLogs.length,s:"sessions"}
 ].map(function(c,i){return e("div",{key:i,style:{background:T.card,borderRadius:12,padding:"10px",border:"1px solid "+T.inp}},e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},c.l),e("div",{style:{fontSize:22,fontWeight:700,color:T.hi,marginTop:3,fontFamily:"'JetBrains Mono',monospace"}},c.v),e("div",{style:{fontSize:11,color:T.mut,marginTop:1}},c.s))})),
-// 7-day volume + ACWR
+// Insights section (collapsible)
+(weekVol>0||acwrVal!==null||deloadWarn||balanceAdv)&&e("div",{style:{marginBottom:8}},
+e("button",{onClick:function(){setShowInsights(!showInsights)},style:{width:"100%",background:"transparent",border:"none",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 2px",cursor:"pointer",marginBottom:showInsights?6:0}},e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},"Insights"),e("span",{style:{fontSize:10,color:T.brdL}},showInsights?"\u25B2":"\u25BC")),
+showInsights&&e("div",null,
 (weekVol>0||acwrVal!==null)&&e("div",{style:{display:"flex",gap:8,marginBottom:8}},
 weekVol>0&&e("div",{style:{flex:1,background:T.card,borderRadius:12,padding:"10px",border:"1px solid "+T.inp}},
 e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},"7-Day Volume"),
@@ -782,9 +786,8 @@ acwrVal!==null&&e("div",{style:{flex:1,background:T.card,borderRadius:12,padding
 e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600}},"Workload Ratio"),
 e("div",{style:{fontSize:16,fontWeight:700,color:acwrVal>1.5?T.err:acwrVal<0.8?T.warn:T.ok,fontFamily:"'JetBrains Mono',monospace",marginTop:3}},acwrVal),
 e("div",{style:{fontSize:11,color:acwrVal>1.5?T.err:acwrVal<0.8?T.warn:T.ok,marginTop:1}},acwrVal>1.5?"Spike risk":acwrVal<0.8?"Low load":"On track"))),
-// Deload warning
 deloadWarn&&e("div",{style:{background:"#1a0a0a",border:"1px solid "+T.errD+"66",borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:13,color:T.errL,fontWeight:600}},"\u{1F6D1} Reduce Load"),e("div",{style:{fontSize:12,color:T.sec,marginTop:3}},"RPE trending up + readiness declining over recent sessions. Reduce load or volume for the next 1\u20133 sessions.")),
-balanceAdv&&e("div",{style:{background:T.card,border:"1px solid "+T.inp,borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:12,color:T.sec,lineHeight:1.5}},balanceAdv.msg)),
+balanceAdv&&e("div",{style:{background:T.card,border:"1px solid "+T.inp,borderRadius:12,padding:"10px 14px",marginBottom:8}},e("div",{style:{fontSize:12,color:T.sec,lineHeight:1.5}},balanceAdv.msg)))),
 // Time available selector
 e("div",{style:{marginBottom:10}},
 e("div",{style:{fontSize:10,color:T.mut,textTransform:"uppercase",letterSpacing:1.5,fontWeight:600,marginBottom:6,paddingLeft:2}},"Time Available"),
@@ -950,6 +953,24 @@ var acwr=calcACWR(logs);
 var deload=shouldDeload(logs);
 var sessVol=0;sess.exercises.forEach(function(ex){(exData[ex.id]||[]).forEach(function(s){if(s.completed)sessVol+=(s.weight||0)*(s.reps||0)})});
 
+// Build coached debrief — 1 line per exercise + next session
+var debrief=[];
+var isDouble=(cycleState.completedToday||[]).length>=1;
+sess.exercises.forEach(function(ex){
+var sets=(exData[ex.id]||[]).filter(function(s){return s.completed});
+if(!sets.length){if(ex.isCarry&&isDouble)debrief.push(ex.name+": skipped (double-day grip management)");return}
+var maxW=Math.max.apply(null,sets.map(function(s){return s.weight||0}));
+var prog=getProgression(ex.id,logs,readiness,getSessionCount(logs));
+var cfg=PROG[ex.id];
+if(prog&&prog.type==="progress")debrief.push(ex.name+": start at "+prog.weight+" next session");
+else if(prog&&prog.type==="caution")debrief.push(ex.name+": "+prog.msg);
+else if(maxW>0)debrief.push(ex.name+": hold at "+maxW);
+else if(!cfg||cfg.inc===0)debrief.push(ex.name+": "+sets.length+" sets done");
+});
+var balAdv=getBalanceAdvisory(logs,next);
+var nextLabel=SESSIONS[next]?SESSIONS[next].label:next;
+debrief.push("Next: "+nextLabel+(balAdv?" \u2014 "+balAdv.msg:""));
+
 var copySummary=function(){
 var lines=[];
 lines.push("I just finished a workout session in my ABC Cycle training program. Here's the structured data from my session. Please analyze it and give me:");
@@ -1012,6 +1033,11 @@ sessionPRs.length>0&&e("div",{style:{background:"#854d0e22",border:"1px solid #8
 e("div",{style:{width:"100%",maxWidth:380,margin:"0 auto",marginBottom:10}},
 sess.exercises.map(function(ex){var sets=(exData[ex.id]||[]).filter(function(s){return s.completed});if(!sets.length)return null;
 return e("div",{key:ex.id,style:{background:T.card,borderRadius:10,padding:"10px 14px",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}},e("div",{style:{fontSize:13,color:T.txt,fontWeight:500}},ex.name),e("div",{style:{fontSize:12,color:T.mut,fontFamily:"'JetBrains Mono',monospace"}},sets.map(function(s){return(s.reps||"-")+(s.weight?"@"+s.weight:"")}).join(" | ")))})),
+// Coached debrief
+debrief.length>0&&e("div",{style:{width:"100%",maxWidth:380,margin:"0 auto",marginBottom:10}},
+e("div",{style:{background:T.card,borderRadius:12,padding:"12px 14px",border:"1px solid "+T.acc+"33"}},
+e("div",{style:{fontSize:12,color:T.acc,fontWeight:600,marginBottom:6}},"Next Session"),
+debrief.map(function(line,i){return e("div",{key:i,style:{fontSize:12,color:i<debrief.length-1?T.sec:T.txt,lineHeight:1.6,fontWeight:i===debrief.length-1?600:400}},line)}))),
 // Session RPE
 e("div",{style:{background:T.card,borderRadius:12,padding:"12px 14px",marginBottom:10,border:"1px solid "+T.inp}},
 e("div",{style:{fontSize:13,color:T.mut,fontWeight:600,marginBottom:8}},"Session Difficulty (RPE)"),
